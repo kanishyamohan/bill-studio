@@ -1,0 +1,2851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bill Studio</title>
+<meta name="description" content="A private invoice generator with live preview and PDF export">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230A0A0A'/%3E%3Ctext x='50' y='70' font-family='Georgia,serif' font-size='64' font-weight='700' fill='%23FFF' text-anchor='middle'%3EK%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+  /* Layout: cool lavender canvas holding one rounded white shell; inside, the editor and live invoice sit side by side.
+     Palette uses a soft neutral, pure white surfaces, and near-black for every active state. */
+  :root {
+    --canvas: #E8E8EC;
+    --shell: #FFFFFF;
+    --surface: #FFFFFF;
+    --surface-muted: #F4F4F6;
+    --surface-sunken: #F0F0F3;
+    --fg: #0A0A0A;
+    --fg-muted: #6B6B70;
+    --fg-subtle: #A1A1A6;
+    --border: #ECECEE;
+    --border-strong: #D4D4D8;
+    --accent: #0A0A0A;
+    --accent-fg: #FFFFFF;
+    --success: #15803D;
+    --success-bg: #DCFCE7;
+    --warning: #A16207;
+    --warning-bg: #FEF3C7;
+    --danger: #B91C1C;
+    --danger-bg: #FEE2E2;
+    --radius: 12px;
+    --radius-sm: 10px;
+    --radius-lg: 20px;
+    --radius-xl: 28px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
+    --font: "Plus Jakarta Sans", -apple-system, system-ui, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --canvas: #0A0A0D;
+      --shell: #141418;
+      --surface: #1A1A1F;
+      --surface-muted: #1F1F25;
+      --surface-sunken: #141418;
+      --fg: #FAFAFA;
+      --fg-muted: #A1A1AA;
+      --fg-subtle: #71717A;
+      --border: #27272A;
+      --border-strong: #3F3F46;
+      --accent: #FAFAFA;
+      --accent-fg: #0A0A0A;
+      --success: #4ADE80;
+      --success-bg: rgba(74,222,128,0.12);
+      --warning: #FACC15;
+      --warning-bg: rgba(250,204,21,0.12);
+      --danger: #F87171;
+      --danger-bg: rgba(248,113,113,0.12);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --canvas: #0A0A0D;
+    --shell: #141418;
+    --surface: #1A1A1F;
+    --surface-muted: #1F1F25;
+    --surface-sunken: #141418;
+    --fg: #FAFAFA;
+    --fg-muted: #A1A1AA;
+    --fg-subtle: #71717A;
+    --border: #27272A;
+    --border-strong: #3F3F46;
+    --accent: #FAFAFA;
+    --accent-fg: #0A0A0A;
+    --success: #4ADE80;
+    --success-bg: rgba(74,222,128,0.12);
+    --warning: #FACC15;
+    --warning-bg: rgba(250,204,21,0.12);
+    --danger: #F87171;
+    --danger-bg: rgba(248,113,113,0.12);
+    color-scheme: dark;
+  }
+
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--font);
+    background: var(--canvas);
+    color: var(--fg);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.005em;
+  }
+  * { box-sizing: border-box; }
+  button { font: inherit; cursor: pointer; color: inherit; }
+
+  input, textarea, select {
+    font: inherit; color: var(--fg); background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 12px; width: 100%; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+    font-variant-numeric: tabular-nums;
+  }
+  input::placeholder, textarea::placeholder { color: var(--fg-subtle); }
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--fg);
+    box-shadow: 0 0 0 3px rgba(10,10,10,0.05);
+  }
+  textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+  select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%236B6B70' stroke-width='1.5' d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+
+  .canvas-pad {
+    min-height: 100%;
+    padding: 20px;
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
+    padding-top: max(20px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  }
+  @media (max-width: 600px) { .canvas-pad { padding: 12px; padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); } }
+
+  .shell {
+    background: var(--shell);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
+    max-width: 1400px;
+    margin: 0 auto;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 40px);
+  }
+
+  .topnav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  @media (max-width: 600px) { .topnav { padding: 12px 14px; } }
+
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; }
+  .brand-mark {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--accent); color: var(--accent-fg);
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 16px;
+    overflow: hidden;
+  }
+  .brand-mark img { width: 100%; height: 100%; object-fit: cover; }
+
+  .tabs { display: flex; gap: 4px; align-items: center; }
+  .tab {
+    padding: 9px 16px;
+    border-radius: 10px;
+    border: none; background: transparent;
+    color: var(--fg-muted); font-weight: 500; font-size: 14px;
+    font-family: inherit;
+    transition: background .12s, color .12s;
+  }
+  .tab:hover { background: var(--surface-muted); color: var(--fg); }
+  .tab.active { background: var(--accent); color: var(--accent-fg); }
+  .tab.active:hover { background: var(--accent); color: var(--accent-fg); }
+
+  .nav-right { display: flex; align-items: center; gap: 6px; }
+  .icon-circle {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: transparent; border: 1px solid var(--border);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--fg-muted); cursor: pointer;
+    transition: all .12s;
+  }
+  .icon-circle:hover { color: var(--fg); border-color: var(--border-strong); background: var(--surface-muted); }
+  .icon-circle svg { width: 16px; height: 16px; }
+
+  @media (max-width: 720px) {
+    .brand .brand-text { display: none; }
+    .tab { padding: 7px 12px; font-size: 13px; }
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+    padding: 10px 18px; border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--fg); font-weight: 500; font-size: 14px;
+    font-family: inherit;
+    transition: all .12s; white-space: nowrap;
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--border-strong); background: var(--surface-muted); }
+  .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .btn.primary:hover { opacity: .9; background: var(--accent); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--fg-muted); }
+  .btn.ghost:hover { background: var(--surface-muted); color: var(--fg); }
+  .btn.danger-outline { color: var(--danger); border-color: var(--border); background: transparent; }
+  .btn.danger-outline:hover { background: var(--danger-bg); border-color: transparent; }
+  .btn.solid-danger { background: var(--danger); color: white; border-color: var(--danger); }
+  .btn-sm { padding: 7px 14px; font-size: 13px; border-radius: 8px; }
+  .btn-xs { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+  .btn svg { width: 14px; height: 14px; stroke-width: 2; }
+  .btn-icon { padding: 7px; width: 32px; height: 32px; justify-content: center; border-radius: 8px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .page { padding: 28px; flex: 1; }
+  @media (max-width: 600px) { .page { padding: 20px 16px 32px; } }
+
+  .breadcrumb { font-size: 13px; color: var(--fg-muted); display: inline-flex; align-items: center; gap: 6px; text-decoration: none; margin-bottom: 10px; font-weight: 500; }
+  .breadcrumb:hover { color: var(--fg); }
+  .breadcrumb svg { width: 14px; height: 14px; }
+
+  .page-header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    margin-bottom: 28px; gap: 16px; flex-wrap: wrap;
+  }
+  .page-title {
+    font-weight: 700; font-size: 44px; letter-spacing: -0.035em; margin: 0; line-height: 1.05;
+  }
+  @media (max-width: 600px) { .page-title { font-size: 32px; } }
+  .subtitle { color: var(--fg-muted); font-size: 13px; margin-top: 6px; }
+  .page-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 13px; font-weight: 500; color: var(--fg); letter-spacing: -0.005em; }
+  .field label .req { color: var(--danger); }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .field-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .field-grid, .field-grid-3 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+  }
+  .card-header-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .card-header-row h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+
+  .card-stack > * + * { margin-top: 14px; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
+
+  .ai-box {
+    background: var(--surface-muted);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .ai-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .ai-label svg { width: 14px; height: 14px; }
+  .ai-row { display: flex; gap: 8px; align-items: flex-start; }
+  .ai-row textarea { flex: 1; min-height: 44px; max-height: 120px; resize: none; }
+  .ai-hint { font-size: 12px; color: var(--fg-muted); margin-top: 8px; line-height: 1.5; }
+
+  .items { display: flex; flex-direction: column; gap: 6px; }
+  .item-row { display: grid; grid-template-columns: 2.2fr 70px 1fr 1fr 32px; gap: 8px; align-items: center; }
+  .item-row input { padding: 9px 11px; font-size: 13px; }
+  .item-row .amount-cell { padding: 9px 11px; font-size: 13px; font-weight: 600; text-align: right; color: var(--fg); font-variant-numeric: tabular-nums; }
+  .items-header { display: grid; grid-template-columns: 2.2fr 70px 1fr 1fr 32px; gap: 8px; font-size: 12px; color: var(--fg-muted); font-weight: 500; padding: 0 2px 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  @media (max-width: 640px) { .item-row { grid-template-columns: 1fr 1fr; } .items-header { display: none; } }
+
+  .preview-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .preview-head h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  .preview-head .sub { font-size: 12px; color: var(--fg-muted); }
+  .preview-scroll {
+    border-radius: var(--radius-lg);
+    background: var(--surface-sunken);
+    padding: 16px;
+    border: 1px solid var(--border);
+  }
+
+  /* Invoice paper — follows the reference image 3 layout */
+  .invoice-paper {
+    background: white; color: #0a0a0a;
+    border-radius: 8px;
+    padding: 48px 48px 40px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 8px 32px rgba(0,0,0,0.08);
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.55;
+    min-height: 1040px;
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .inv-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+  .inv-title {
+    font-weight: 800;
+    font-size: 96px;
+    letter-spacing: -0.055em;
+    line-height: .88;
+    margin: 0;
+    color: #0a0a0a;
+    font-family: var(--font);
+  }
+  .inv-from { text-align: right; min-width: 240px; max-width: 280px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .inv-from-top { display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
+  .inv-from-id { text-align: right; }
+  .inv-from-name { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; color: #0a0a0a; }
+  .inv-from-role { color: #666; font-size: 12px; font-weight: 500; }
+  .inv-avatar { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; background: #E4E4E7; color: #52525B; display: inline-grid; place-items: center; font-size: 15px; font-weight: 700; flex-shrink: 0; }
+  .inv-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .inv-contact-sep { width: 100%; height: 1px; background: #d4d4d8; margin-top: 2px; }
+  .inv-contact { font-size: 12px; color: #262626; display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+  .inv-contact div { max-width: 240px; text-align: right; }
+
+  .inv-double-rule { margin-top: 32px; }
+  .inv-double-rule hr { border: 0; border-top: 1.5px solid #0a0a0a; margin: 0; }
+  .inv-double-rule hr + hr { margin-top: 4px; }
+
+  .inv-billed { margin-top: 30px; font-size: 13px; color: #262626; }
+  .inv-billed-head { font-weight: 700; color: #0a0a0a; margin-bottom: 10px; font-size: 13.5px; }
+  .inv-billed-name { font-weight: 400; margin-bottom: 8px; }
+  .inv-billed-addr-label { font-weight: 700; color: #0a0a0a; margin-bottom: 2px; }
+  .inv-billed-addr-line { color: #262626; }
+  .inv-billed-gst { margin-top: 14px; font-size: 13px; }
+  .inv-billed-gst b { color: #0a0a0a; font-weight: 700; }
+
+  .inv-thin-rule { border-top: 1px solid #D4D4D8; margin: 22px 0; }
+
+  .inv-date-row { font-size: 13.5px; margin-bottom: 18px; }
+  .inv-date-row b { font-weight: 700; color: #0a0a0a; }
+
+  .inv-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 13px; }
+  .inv-table thead th {
+    text-align: left; font-weight: 700; font-size: 13px;
+    padding: 12px 14px; color: #0a0a0a;
+    border-top: 1.5px solid #0a0a0a;
+    border-bottom: 1.5px solid #0a0a0a;
+    border-right: 1.5px solid #0a0a0a;
+  }
+  .inv-table thead th:last-child { border-right: none; }
+  .inv-table tbody td {
+    padding: 14px 14px; color: #262626; vertical-align: top; font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid #D4D4D8;
+    border-right: 1.5px solid #0a0a0a;
+  }
+  .inv-table tbody td:last-child { border-right: none; }
+  .inv-table thead th:nth-child(2), .inv-table thead th:nth-child(3), .inv-table thead th:nth-child(4) { text-align: right; }
+  .inv-table tbody td:nth-child(2), .inv-table tbody td:nth-child(3), .inv-table tbody td:nth-child(4) { text-align: right; }
+
+  .inv-table tbody tr.sum-row td { border-bottom: 1px solid #D4D4D8; font-weight: 400; color: #262626; padding: 10px 14px; }
+  .inv-table tbody tr.sum-row td.sum-label { font-weight: 600; color: #0a0a0a; text-align: right; }
+  .inv-table tbody tr.sum-row.total td { border-top: 1.5px solid #0a0a0a; border-bottom: none; font-weight: 700; font-size: 14px; padding-top: 14px; padding-bottom: 14px; color: #0a0a0a; }
+
+  .inv-payment { margin-top: 28px; }
+  .inv-payment-head { font-weight: 700; color: #0a0a0a; margin-bottom: 10px; font-size: 14px; }
+  .inv-payment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-size: 13px; color: #262626; }
+  .inv-payment-grid .k { font-weight: 400; color: #0a0a0a; }
+  .inv-payment-grid div.row { margin-bottom: 3px; }
+
+  .inv-notes { margin-top: 18px; }
+  .inv-notes-head { font-weight: 700; color: #0a0a0a; margin-bottom: 4px; font-size: 13px; }
+  .inv-notes-body { font-size: 12.5px; color: #262626; }
+
+  .inv-foot { margin-top: 32px; padding-top: 14px; border-top: 1px solid #E4E4E7; font-size: 11.5px; color: #71717A; text-align: center; }
+
+  /* Dashboard */
+  .invoice-list { display: flex; flex-direction: column; gap: 8px; }
+  .invoice-row {
+    display: grid; grid-template-columns: 110px 1fr auto 140px auto;
+    gap: 16px; align-items: center;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: all .12s;
+    cursor: pointer;
+  }
+  .invoice-row:hover { border-color: var(--border-strong); background: var(--surface-muted); }
+  .invoice-number { font-family: var(--mono); font-size: 11px; color: var(--fg-subtle); letter-spacing: .02em; }
+  .invoice-client { font-weight: 600; font-size: 14px; }
+  .invoice-date { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+  .invoice-amount { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 15px; text-align: right; }
+  .invoice-row-actions { display: flex; gap: 4px; }
+  @media (max-width: 720px) {
+    .invoice-row { grid-template-columns: 1fr auto; gap: 8px; padding: 14px 16px; }
+    .invoice-row > :nth-child(1) { order: 2; justify-self: start; }
+    .invoice-row > :nth-child(2) { order: 1; grid-column: 1 / -1; }
+    .invoice-row > :nth-child(3) { order: 4; justify-self: end; }
+    .invoice-row > :nth-child(4) { order: 3; }
+    .invoice-row > :nth-child(5) { order: 5; grid-column: 1 / -1; justify-self: end; }
+  }
+
+  .status-pill {
+    display: inline-flex; padding: 3px 10px; border-radius: 6px;
+    font-size: 11px; font-weight: 600;
+  }
+  .status-paid { background: var(--success-bg); color: var(--success); }
+  .status-unpaid, .status-sent { background: var(--warning-bg); color: var(--warning); }
+  .status-overdue { background: var(--danger-bg); color: var(--danger); }
+  .status-draft { background: var(--surface-muted); color: var(--fg-muted); border: 1px solid var(--border); }
+
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--fg-muted);
+    background: var(--surface-muted); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  }
+  .empty-state h3 { color: var(--fg); font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .empty-state p { margin: 0 0 16px; }
+
+  .filter-row { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+  .filter-pill {
+    padding: 8px 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface);
+    font-size: 13px; font-weight: 500; color: var(--fg-muted);
+    font-family: inherit;
+    transition: all .12s;
+    cursor: pointer;
+  }
+  .filter-pill:hover { color: var(--fg); border-color: var(--border-strong); background: var(--surface-muted); }
+  .filter-pill.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .filter-pill .count { opacity: .5; margin-left: 4px; font-variant-numeric: tabular-nums; font-size: 12px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 720px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px;
+  }
+  .stat-label { font-size: 12px; color: var(--fg-muted); font-weight: 500; }
+  .stat-value { font-weight: 700; font-size: 28px; letter-spacing: -0.02em; margin-top: 6px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat-sub { font-size: 12px; color: var(--fg-subtle); margin-top: 4px; }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(10,10,13,0.5);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+    padding: 16px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--surface); border-radius: var(--radius-lg);
+    max-width: 520px; width: 100%; padding: 28px;
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal h3 { margin: 0 0 20px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
+
+  .toast {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    background: #2563EB; color: #fff;
+    padding: 11px 18px; border-radius: 10px; font-size: 13px; font-weight: 500;
+    z-index: 200; opacity: 0; transition: opacity .2s, transform .2s;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    display: inline-flex; align-items: center; gap: 8px;
+    max-width: calc(100vw - 32px);
+  }
+  .toast svg { width: 16px; height: 16px; flex-shrink: 0; stroke-width: 2.2; }
+  .toast span { overflow: hidden; text-overflow: ellipsis; }
+  .toast.success { background: #15803D; }
+  .toast.warning { background: #D97706; }
+  .toast.error { background: #DC2626; }
+  .toast.info { background: #2563EB; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+
+  .bank-list, .method-list { display: flex; flex-direction: column; gap: 10px; }
+  .bank-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--radius); gap: 12px;
+    background: var(--surface);
+  }
+  .bank-item-info { flex: 1; min-width: 0; }
+  .bank-item-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .bank-item-sub { font-size: 12px; color: var(--fg-muted); margin-top: 3px; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bank-tag { font-size: 10px; padding: 2px 8px; border-radius: 6px; background: var(--surface-muted); border: 1px solid var(--border); color: var(--fg-muted); font-weight: 500; font-family: var(--font); letter-spacing: 0; }
+  .bank-item-actions { display: flex; gap: 4px; }
+
+  .segmented { display: flex; background: var(--surface-muted); border-radius: 10px; padding: 4px; border: 1px solid var(--border); }
+  .segmented button {
+    flex: 1; padding: 8px 14px; border: none; background: transparent;
+    color: var(--fg-muted); font-size: 13px; font-weight: 500; border-radius: 7px;
+    font-family: inherit;
+  }
+  .segmented button.active { background: var(--surface); color: var(--fg); box-shadow: var(--shadow-sm); }
+
+  .settings-tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .settings-tab {
+    padding: 12px 18px; border: none; background: transparent; color: var(--fg-muted);
+    font-weight: 500; font-size: 14px; border-bottom: 2px solid transparent;
+    margin-bottom: -1px; white-space: nowrap; font-family: inherit;
+    cursor: pointer;
+  }
+  .settings-tab:hover { color: var(--fg); }
+  .settings-tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+
+  .multi-select { display: flex; flex-wrap: wrap; gap: 6px; }
+  .multi-select-chip {
+    padding: 7px 14px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); font-size: 13px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
+    color: var(--fg-muted); font-weight: 500; font-family: inherit;
+    transition: all .12s;
+  }
+  .multi-select-chip:hover { color: var(--fg); border-color: var(--border-strong); background: var(--surface-muted); }
+  .multi-select-chip.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid currentColor; border-right-color: transparent;
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .icon-btn { background: transparent; border: none; color: var(--fg-muted); padding: 6px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+  .icon-btn:hover { background: var(--surface-muted); color: var(--fg); }
+  .icon-btn svg { width: 14px; height: 14px; }
+
+  .status-menu { position: relative; }
+  .status-menu-trigger { all: unset; cursor: pointer; }
+  .status-menu-pop {
+    position: absolute; top: calc(100% + 4px); right: 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 4px; min-width: 150px; box-shadow: var(--shadow-md); z-index: 50;
+    display: none;
+  }
+  .status-menu-pop.open { display: block; }
+  .status-menu-pop button { display: block; width: 100%; text-align: left; padding: 8px 12px; background: transparent; border: none; border-radius: 6px; font-size: 13px; color: var(--fg); cursor: pointer; font-family: inherit; }
+  .status-menu-pop button:hover { background: var(--surface-muted); }
+
+  .avatar-upload { display: flex; align-items: center; gap: 16px; }
+  .avatar-preview { width: 72px; height: 72px; border-radius: 50%; overflow: hidden; background: var(--surface-muted); border: 1px solid var(--border); display: grid; place-items: center; color: var(--fg-muted); font-weight: 700; font-size: 24px; flex-shrink: 0; }
+  .avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+  .avatar-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .avatar-actions input[type="file"] { display: none; }
+
+  /* Profile cards */
+  .profile-cards { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 900px) { .profile-cards { grid-template-columns: 1fr 1fr; } }
+  .profile-card {
+    background: var(--surface-muted); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 20px; display: flex; flex-direction: column; gap: 16px;
+    transition: border-color .12s;
+  }
+  .profile-card:hover { border-color: var(--border-strong); }
+  .profile-card.is-default { border-color: var(--border-strong); background: var(--surface); }
+  .profile-card-head { display: flex; align-items: flex-start; gap: 14px; }
+  .profile-card-avatar {
+    width: 56px; height: 56px; border-radius: 50%; overflow: hidden;
+    background: var(--surface); border: 1px solid var(--border);
+    display: grid; place-items: center; color: var(--fg-muted);
+    font-weight: 700; font-size: 20px; flex-shrink: 0;
+  }
+  .profile-card-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .profile-card-id { flex: 1; min-width: 0; }
+  .profile-card-name { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .profile-card-role { color: var(--fg-muted); font-size: 13px; margin-top: 2px; }
+  .profile-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .profile-card-actions .btn-sm { padding: 6px 10px; }
+  .profile-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+  @media (max-width: 500px) { .profile-card-body { grid-template-columns: 1fr; } }
+  .profile-field-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--fg-muted); font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 4px; }
+  .profile-field-label svg { width: 12px; height: 12px; }
+  .profile-field-value { font-size: 13px; color: var(--fg); word-break: break-word; }
+
+  .brand-logo {
+    width: auto; height: 36px; max-width: 72px; display: inline-block; vertical-align: middle;
+    margin-right: 10px; object-fit: contain;
+  }
+  .chip-logo { width: auto; height: 28px; max-width: 56px; vertical-align: middle; margin-right: 10px; object-fit: contain; }
+  .inv-brand-logo { width: auto; height: 32px; max-width: 64px; vertical-align: middle; margin-right: 10px; object-fit: contain; }
+  .save-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--fg-muted); font-weight: 500;
+    padding: 10px 14px; border-radius: 10px;
+    min-width: 70px; justify-content: center;
+    transition: color .15s, background .15s;
+  }
+  .save-status svg { width: 14px; height: 14px; }
+  .save-status.pending { color: var(--warning); }
+  .save-status.saving { color: var(--fg-muted); }
+  .save-status.saved { color: var(--success); }
+  .save-status.error { color: var(--danger); background: var(--danger-bg); }
+
+  .ai-attach-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+  .ai-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .ai-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 8px 4px 10px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 12px; color: var(--fg); max-width: 220px;
+  }
+  .ai-chip > :not(button) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ai-chip svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .ai-chip-x {
+    background: transparent; border: none; color: var(--fg-muted); padding: 2px; border-radius: 4px; cursor: pointer; display: inline-flex;
+  }
+  .ai-chip-x:hover { color: var(--fg); background: var(--surface-muted); }
+  .ai-chip-x svg { width: 10px; height: 10px; }
+
+  /* Customer autocomplete */
+  .combo-wrap { position: relative; }
+  .combo-list {
+    position: absolute; left: 0; right: 0; top: 100%;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; margin-top: 4px;
+    max-height: 280px; overflow-y: auto;
+    z-index: 20;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.04);
+    display: none;
+  }
+  .combo-list.open { display: block; }
+  .combo-item {
+    padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .combo-item:last-child { border-bottom: none; }
+  .combo-item:hover, .combo-item.focused { background: var(--surface-muted); }
+  .combo-item-name { font-weight: 600; font-size: 13.5px; }
+  .combo-item-sub { font-size: 11.5px; color: var(--fg-muted); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .combo-empty { padding: 12px 14px; font-size: 12px; color: var(--fg-muted); text-align: center; }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="canvas-pad">
+  <div class="shell">
+    <nav class="topnav">
+      <a href="#dashboard" class="brand">
+        <div class="brand-mark" id="brand-mark">K</div>
+      </a>
+      <div class="tabs">
+        <button class="tab" data-tab="dashboard">Dashboard</button>
+        <button class="tab" data-tab="create">New Invoice</button>
+        <button class="tab" data-tab="settings">Settings</button>
+      </div>
+      <div class="nav-right">
+        <button class="icon-circle" id="theme-toggle" title="Toggle theme"><i data-lucide="moon"></i></button>
+      </div>
+    </nav>
+
+    <main class="page" id="page-root"></main>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js" onload="window.__lucideReady=true; try{window.lucide&&window.lucide.createIcons&&window.lucide.createIcons()}catch(e){}"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" onload="try{pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'}catch(e){}"></script>
+
+<!-- Standalone polyfill: provides the same `claude.use()` surface the app expects,
+     but backed by the browser's localStorage, direct PDF downloads, and an optional
+     Anthropic API key stored locally. Nothing leaves the user's device except the
+     AI request (only when they set an API key). -->
+<script>
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'invoiceStudio.data.v1';
+  const API_KEY_STORAGE = 'invoiceStudio.anthropicKey';
+  const MODEL_STORAGE = 'invoiceStudio.aiModel';
+
+  // --- Store: one JSON blob in localStorage, keyed by path ---
+  function loadAll() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+    catch(e) { return {}; }
+  }
+  function saveAll(obj) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); return true; }
+    catch(e) { console.error('Storage save failed', e); return false; }
+  }
+  window.__invoiceExport = () => loadAll();
+  window.__invoiceImport = (obj) => { if (obj && typeof obj === 'object') { saveAll(obj); notify(''); return true; } return false; };
+  window.__invoiceClear = () => { localStorage.removeItem(STORAGE_KEY); notify(''); };
+
+  // listeners[path] = Set<Function>; path may be a doc or a collection
+  const listeners = new Map();
+  function addListener(path, cb) {
+    if (!listeners.has(path)) listeners.set(path, new Set());
+    listeners.get(path).add(cb);
+    return () => { listeners.get(path)?.delete(cb); };
+  }
+  function notify(changedPath) {
+    // Fire every listener whose path touches the changed path.
+    for (const [listenerPath, cbs] of listeners) {
+      const l = listenerPath, c = changedPath;
+      const touches = l === c
+        || (c && l && c.startsWith(l + '/'))
+        || (c && l && l.startsWith(c + '/'))
+        || l === '' || c === '';
+      if (touches) cbs.forEach(cb => { try { cb(); } catch(e) { console.error(e); } });
+    }
+  }
+  // Also react if another tab writes to the same key.
+  window.addEventListener('storage', e => { if (e.key === STORAGE_KEY) notify(''); });
+
+  function docSnap(path) {
+    const data = loadAll()[path];
+    return {
+      id: path.split('/').pop(),
+      exists: data != null,
+      data: () => data,
+      metadata: { fromCache: false, hasPendingWrites: false },
+    };
+  }
+  function collectionDocs(path) {
+    const store = loadAll();
+    const prefix = path + '/';
+    return Object.keys(store)
+      .filter(k => k.startsWith(prefix) && !k.slice(prefix.length).includes('/'))
+      .map(k => ({
+        id: k.slice(prefix.length),
+        exists: true,
+        data: () => store[k],
+        metadata: { fromCache: false, hasPendingWrites: false },
+      }));
+  }
+
+  function docRef(path) {
+    return {
+      path,
+      id: path.split('/').pop(),
+      async get() { return docSnap(path); },
+      async set(data) {
+        const all = loadAll();
+        all[path] = data;
+        if (!saveAll(all)) throw { code: 'quota_exceeded', message: 'Browser storage full' };
+        notify(path);
+      },
+      async update(data) {
+        const all = loadAll();
+        if (all[path] == null) throw { code: 'invalid_argument', message: 'No such document' };
+        all[path] = { ...all[path], ...data };
+        if (!saveAll(all)) throw { code: 'quota_exceeded', message: 'Browser storage full' };
+        notify(path);
+      },
+      async delete() {
+        const all = loadAll();
+        delete all[path];
+        saveAll(all);
+        notify(path);
+      },
+      onSnapshot(next) {
+        const emit = () => next(docSnap(path));
+        const un = addListener(path, emit);
+        setTimeout(emit, 0);
+        return un;
+      },
+      collection(sub) { return collectionRef(path + '/' + sub); },
+    };
+  }
+
+  function collectionRef(path, q = {}) {
+    const self = {
+      path,
+      doc(id) { return docRef(path + '/' + (id || Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4))); },
+      where(field, op, value) { return collectionRef(path, { ...q, where: [...(q.where || []), [field, op, value]] }); },
+      orderBy(field, dir = 'asc') { return collectionRef(path, { ...q, order: [field, dir] }); },
+      limit(n) { return collectionRef(path, { ...q, limit: n }); },
+      async get() { return snapOf(); },
+      onSnapshot(next) {
+        const emit = () => next(snapOf());
+        const un = addListener(path, emit);
+        setTimeout(emit, 0);
+        return un;
+      },
+      async add(data) {
+        const ref = self.doc();
+        await ref.set(data);
+        return ref;
+      },
+    };
+    function snapOf() {
+      let docs = collectionDocs(path);
+      if (q.where) for (const [f, op, v] of q.where) docs = docs.filter(d => {
+        const dv = d.data()?.[f];
+        switch (op) {
+          case '==': case 'eq': return dv === v;
+          case '!=': case 'ne': return dv !== v;
+          case '<': case 'lt': return dv < v;
+          case '<=': case 'lte': return dv <= v;
+          case '>': case 'gt': return dv > v;
+          case '>=': case 'gte': return dv >= v;
+          case 'in': return Array.isArray(v) && v.includes(dv);
+          case 'array-contains': return Array.isArray(dv) && dv.includes(v);
+          default: return true;
+        }
+      });
+      if (q.order) {
+        const [f, dir] = q.order;
+        docs.sort((a, b) => {
+          const av = a.data()?.[f], bv = b.data()?.[f];
+          if (av == null && bv == null) return 0;
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          if (av < bv) return dir === 'asc' ? -1 : 1;
+          if (av > bv) return dir === 'asc' ? 1 : -1;
+          return 0;
+        });
+      } else {
+        docs.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      }
+      if (q.limit) docs = docs.slice(0, q.limit);
+      return {
+        docs, size: docs.length, empty: docs.length === 0,
+        docChanges: () => docs.map((d, i) => ({ type: 'added', doc: d, oldIndex: -1, newIndex: i })),
+        metadata: { fromCache: false, hasPendingWrites: false },
+      };
+    }
+    return self;
+  }
+
+  const localDb = {
+    doc(path) { return docRef(path); },
+    collection(path) { return collectionRef(path); },
+  };
+
+  // --- AI: optional, uses the user's own Anthropic API key from localStorage ---
+  async function blobToBase64Clean(blob) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve((r.result + '').split(',')[1]);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+  }
+  const localSample = {
+    async json(prompt, opts = {}) {
+      const apiKey = localStorage.getItem(API_KEY_STORAGE);
+      if (!apiKey) throw { code: 'not_granted', message: 'No API key set. Add one in Settings → AI.' };
+      let model = localStorage.getItem(MODEL_STORAGE) || 'claude-3-5-haiku-20241022';
+      // Haiku vision is supported, but for image jobs sonnet reads invoices better
+      if (Array.isArray(opts.images) && opts.images.length > 0 && model.indexOf('haiku') !== -1) {
+        model = 'claude-3-5-sonnet-20241022';
+      }
+      const content = [];
+      for (const img of (opts.images || [])) {
+        const b64 = await blobToBase64Clean(img);
+        content.push({ type: 'image', source: { type: 'base64', media_type: img.type || 'image/jpeg', data: b64 } });
+      }
+      content.push({ type: 'text', text: prompt });
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 2048,
+          messages: [{ role: 'user', content }],
+        }),
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => '');
+        if (r.status === 401 || r.status === 403) throw { code: 'not_granted', message: 'Invalid API key — check Settings → AI' };
+        if (r.status === 429) throw { code: 'rate_limited', message: 'Rate limited' };
+        throw { code: 'error', message: 'API error ' + r.status + ': ' + text.slice(0, 200) };
+      }
+      const data = await r.json();
+      const text = (data.content || []).map(c => c.text || '').join('\n');
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) throw { code: 'parse', message: 'Model did not return JSON. Try a clearer image, or Sonnet model.' };
+      try { return JSON.parse(match[0]); }
+      catch(parseErr) { throw { code: 'parse', message: 'Response was not valid JSON: ' + (parseErr.message || '').slice(0, 80) }; }
+    },
+    async limits() { return { images: true }; },
+  };
+
+  // --- Downloads: a plain <a download> click ---
+  const localDownloads = {
+    async save({ filename, data }) {
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    },
+  };
+
+  // Seed Kanishya's details and bank accounts on the first visit (empty store)
+  const SEED = {"profiles/kanishya_main": {"name": "Kanishya Mohan", "role": "Content Creator", "email": "kanishyamohan@gmail.com", "phone": "+91-9521378398", "address": "C-1001, Century Breeze, Nehru Nagar\nJakkur, Bengaluru\nKarnataka, India 560064", "panNumber": "FZYPM1137C", "gstNumber": "", "invoicePrefix": "INV", "footerNote": "If you have any questions regarding this invoice, please reach out to {email}", "avatarUrl": "data:image/jpeg;base64,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", "isDefault": true, "createdAt": 1763295000000}, "banks/bank_icici_domestic": {"name": "ICICI Bank", "type": "domestic", "accountName": "Kanishya Mohan", "accountNumber": "401701502818", "ifsc": "ICIC0004017", "swiftCode": "", "bankAddress": ""}, "banks/bank_sbi_international": {"name": "State Bank of India", "type": "international", "accountName": "Kanishya Mohan", "accountNumber": "", "ifsc": "", "swiftCode": "", "bankAddress": ""}};
+  try {
+    if (Object.keys(loadAll()).length === 0) {
+      saveAll(SEED);
+    }
+  } catch(e) { console.warn('Seed failed', e); }
+
+  // Expose a mock claude.use() so the rest of the app runs unchanged
+  window.claude = window.claude || {
+    use: async (cap) => {
+      if (cap === 'db') return localDb;
+      if (cap === 'sample') return localSample;
+      if (cap === 'downloads') return localDownloads;
+      return null;
+    },
+  };
+})();
+</script>
+
+<script>
+(() => {
+  'use strict';
+
+  const state = {
+    route: 'dashboard', editId: null,
+    profiles: [], banks: [], methods: [], invoices: [],
+    filter: 'all', currentDraft: null,
+    aiLoading: false, saving: false,
+    settingsTab: 'profile', ready: false,
+    aiImages: [],
+    draftPersisted: false,
+    draftCreatedEmpty: false,
+  };
+
+  function getActiveProfile() {
+    if (!state.profiles.length) return null;
+    return state.profiles.find(p => p.isDefault) || state.profiles[0];
+  }
+
+  let db = null, sample = null, downloads = null;
+  const unsubs = [];
+
+  const DEFAULT_PROFILE = {
+    name: '', role: '', email: '', phone: '', address: '',
+    gstNumber: '', panNumber: '', avatarUrl: '',
+    footerNote: 'If you have any questions regarding this invoice, please reach out to {email}',
+    invoicePrefix: 'INV',
+  };
+
+  async function init() {
+    db = await claude.use('db');
+    sample = await claude.use('sample');
+    downloads = await claude.use('downloads');
+    if (!db) { state.ready = true; render(); return; }
+    subscribe();
+    readRoute();
+  }
+
+  function docData(d) {
+    if (!d) return {};
+    if (typeof d.data === 'function') return d.data() || {};
+    return d.data || {};
+  }
+
+  function subscribe() {
+    unsubs.forEach(u => u && u()); unsubs.length = 0;
+    unsubs.push(db.collection('profiles').onSnapshot(snap => {
+      state.profiles = snap.docs.map(d => ({ id: d.id, ...docData(d) }));
+      afterData();
+    }));
+    unsubs.push(db.collection('banks').onSnapshot(snap => {
+      state.banks = snap.docs.map(d => ({ id: d.id, ...docData(d) }));
+      afterData();
+    }));
+    unsubs.push(db.collection('methods').onSnapshot(snap => {
+      state.methods = snap.docs.map(d => ({ id: d.id, ...docData(d) }));
+      afterData();
+    }));
+    unsubs.push(db.collection('invoices').orderBy('createdAt', 'desc').onSnapshot(snap => {
+      state.invoices = snap.docs.map(d => ({ id: d.id, ...docData(d) }));
+      afterData();
+    }));
+  }
+
+  let loadedSignals = 0;
+  function afterData() {
+    loadedSignals++;
+    if (loadedSignals >= 1) state.ready = true;
+    render();
+  }
+
+  function readRoute() {
+    const h = (location.hash || '#dashboard').slice(1);
+    const [route, ...rest] = h.split('/');
+    state.route = route || 'dashboard';
+    state.editId = rest.join('/') || null;
+    if (state.route === 'create') {
+      // Always start a fresh new-invoice session with today's date — no stale drafts.
+      state.currentDraft = newDraft();
+      state.draftPersisted = false;
+      state.draftCreatedEmpty = true;
+    }
+    if (state.route === 'edit' && state.editId) {
+      const inv = state.invoices.find(i => i.id === state.editId);
+      if (inv) {
+        state.currentDraft = cloneDraft(inv);
+        state.draftPersisted = true;
+        state.draftCreatedEmpty = false;
+      }
+    }
+    render();
+  }
+  window.addEventListener('hashchange', async () => {
+    const wasInEditor = (state.route === 'create' || state.route === 'edit');
+    if (wasInEditor) await flushAutoSave();
+    readRoute();
+  });
+
+  function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+  function fmtMoney(n, currency = 'INR') {
+    const num = Number(n) || 0;
+    const sym = { INR: '₹', USD: '$', EUR: '€', GBP: '£' }[currency] || (currency + ' ');
+    return sym + num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  }
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso + 'T00:00:00');
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  function fmtDateShort(iso) {
+    if (!iso) return '';
+    const d = new Date(iso + 'T00:00:00');
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+  function fmtDateUS(iso) {
+    if (!iso) return '';
+    const d = new Date(iso + 'T00:00:00');
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  function todayISO() { return new Date().toISOString().slice(0, 10); }
+  function addDaysISO(iso, days) {
+    const d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function escapeAttr(s) { return escapeHtml(s); }
+  function nl2br(s) { return escapeHtml(s).replace(/\n/g, '<br>'); }
+
+  function nextInvoiceNumber() {
+    const year = new Date().getFullYear();
+    const prefix = (getActiveProfile()?.invoicePrefix || 'INV') + '-' + year + '-';
+    const used = state.invoices.map(i => i.number).filter(n => n && n.startsWith(prefix))
+      .map(n => parseInt(n.slice(prefix.length), 10)).filter(x => !isNaN(x));
+    const next = (used.length ? Math.max(...used) : 0) + 1;
+    return prefix + String(next).padStart(3, '0');
+  }
+
+  function newDraft() {
+    const t = todayISO();
+    return {
+      id: uid(), number: nextInvoiceNumber(), status: 'draft',
+      currency: 'INR', issueDate: t, dueDate: addDaysISO(t, 14),
+      customer: { name: '', address: '', gstNumber: '', panNumber: '', email: '' },
+      items: [{ id: uid(), description: '', qty: 1, rate: 0 }],
+      gstPercent: 0, discount: 0, notes: '',
+      bankId: (state.banks.find(b => b.type === 'domestic') || state.banks[0])?.id || '', methodIds: [],
+      createdAt: Date.now(), updatedAt: Date.now(),
+    };
+  }
+
+  function cloneDraft(inv) { return JSON.parse(JSON.stringify(inv)); }
+
+  function computeTotals(inv) {
+    const subtotal = (inv.items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
+    const discount = Number(inv.discount) || 0;
+    const taxable = Math.max(0, subtotal - discount);
+    const gst = taxable * ((Number(inv.gstPercent) || 0) / 100);
+    const total = taxable + gst;
+    return { subtotal, discount, gst, total };
+  }
+
+  function renderIcons() {
+    try { if (window.lucide) window.lucide.createIcons(); } catch(e) {}
+  }
+
+  // --- Auto-save: debounced write of the current draft, with a header status indicator ---
+  let autoSaveTimer;
+  let saveStatus = null; // null | 'pending' | 'saving' | 'saved' | 'error'
+
+  function isDraftEmpty(d) {
+    if (!d) return true;
+    const c = d.customer || {};
+    if ((c.name || '').trim()) return false;
+    if ((c.address || '').trim()) return false;
+    if ((c.gstNumber || '').trim()) return false;
+    if ((c.panNumber || '').trim()) return false;
+    if ((c.email || '').trim()) return false;
+    if ((d.notes || '').trim()) return false;
+    if (Number(d.gstPercent) > 0) return false;
+    if (Number(d.discount) > 0) return false;
+    if ((d.methodIds || []).length > 0) return false;
+    for (const it of (d.items || [])) {
+      if ((it.description || '').trim()) return false;
+      if (Number(it.rate) > 0) return false;
+    }
+    return true;
+  }
+
+  function scheduleAutoSave() {
+    if (!state.currentDraft || !db) return;
+    const empty = isDraftEmpty(state.currentDraft);
+    if (empty && !state.draftPersisted) {
+      saveStatus = null;
+      updateSaveStatus();
+      clearTimeout(autoSaveTimer);
+      return;
+    }
+    saveStatus = 'pending';
+    updateSaveStatus();
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(autoSave, 700);
+  }
+
+  async function autoSave() {
+    if (!state.currentDraft || !db) return;
+    const d = state.currentDraft;
+
+    if (isDraftEmpty(d)) {
+      // The draft has no real content. If this one was created fresh (not an edit
+      // of an existing invoice) and we had already saved it once, delete the row
+      // so empty drafts don't pile up in the ledger.
+      if (state.draftPersisted && state.draftCreatedEmpty) {
+        try { await db.doc('invoices/' + d.id).delete(); }
+        catch(e) { console.warn('Auto-cleanup failed', e); }
+        state.draftPersisted = false;
+      }
+      saveStatus = null;
+      updateSaveStatus();
+      return;
+    }
+
+    d.updatedAt = Date.now();
+    saveStatus = 'saving';
+    updateSaveStatus();
+    try {
+      await db.doc('invoices/' + d.id).set(d);
+      state.draftPersisted = true;
+      saveStatus = 'saved';
+      updateSaveStatus();
+    } catch(e) {
+      saveStatus = 'error';
+      updateSaveStatus();
+      console.error('Auto-save failed', e);
+    }
+  }
+
+  async function flushAutoSave() {
+    clearTimeout(autoSaveTimer);
+    if (state.currentDraft && db) await autoSave();
+  }
+  function updateSaveStatus() {
+    const el = document.getElementById('save-status');
+    if (!el) return;
+    if (!saveStatus) { el.innerHTML = ''; el.className = 'save-status'; return; }
+    const map = {
+      pending: '<i data-lucide="circle"></i> Editing',
+      saving: '<span class="spinner"></span> Saving',
+      saved: '<i data-lucide="check"></i> Saved',
+      error: '<i data-lucide="alert-circle"></i> Save failed',
+    };
+    el.className = 'save-status ' + saveStatus;
+    el.innerHTML = map[saveStatus];
+    renderIcons();
+  }
+
+  // --- Brand logos: resolve bank/method labels to Simple Icons (monochrome) ---
+  const EMBEDDED_LOGOS = {
+    'paypal': 'data:image/png;base64,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',
+    'paytm': 'data:image/png;base64,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',
+    'icicibank': 'data:image/png;base64,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',
+    'statebankofindia': 'data:image/png;base64,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',
+  };
+  const BRAND_LOGOS = {
+    'paypal': 'paypal', 'gpay': 'googlepay', 'google pay': 'googlepay',
+    'paytm': 'paytm', 'phonepe': 'phonepe', 'bhim': 'bhim',
+    'venmo': 'venmo', 'cash app': 'cashapp', 'cashapp': 'cashapp', 'zelle': 'zelle',
+    'wise': 'wise', 'stripe': 'stripe', 'revolut': 'revolut', 'square': 'square',
+    'razorpay': 'razorpay', 'upi': 'paytm',
+    'icici': 'icicibank', 'icici bank': 'icicibank',
+    'sbi': 'statebankofindia', 'state bank of india': 'statebankofindia',
+    'hdfc': 'hdfcbank', 'hdfc bank': 'hdfcbank',
+    'axis': 'axisbank', 'axis bank': 'axisbank',
+    'kotak': 'kotakmahindrabank', 'kotak mahindra': 'kotakmahindrabank',
+    'yes bank': 'yesbank', 'idfc': 'idfcfirstbank', 'idfc first bank': 'idfcfirstbank',
+    'barclays': 'barclays', 'hsbc': 'hsbc', 'chase': 'chase',
+    'bank of america': 'bankofamerica', 'wells fargo': 'wellsfargo',
+    'citi': 'citi', 'citibank': 'citi', 'bitcoin': 'bitcoin', 'ethereum': 'ethereum',
+  };
+  function brandLogo(label) {
+    const key = (label || '').toLowerCase().trim();
+    const slug = BRAND_LOGOS[key];
+    if (!slug) return null;
+    if (EMBEDDED_LOGOS[slug]) return EMBEDDED_LOGOS[slug];
+    return 'https://cdn.jsdelivr.net/npm/simple-icons@11.14.0/icons/' + slug + '.svg';
+  }
+  function brandLogoHTML(label, cls) {
+    const url = brandLogo(label);
+    return url ? '<img src="' + url + '" alt="" class="' + (cls || 'brand-logo') + '" onerror="this.remove()">' : '';
+  }
+
+  let toastTimer;
+  function classifyToast(msg) {
+    const m = String(msg).toLowerCase();
+    if (/^ai:|could not|failed|fail:|not available|not loaded|invalid/.test(m)) return 'error';
+    if (/required|please|max 20|rate limit|set your api|first$|pick at least|describe the/.test(m)) return 'warning';
+    if (/saved|added|removed|deleted|imported|downloaded|cleared|marked|pasted|ready|sent|filled|opened|default profile set/.test(m)) return 'success';
+    return 'info';
+  }
+  function toast(msg, type) {
+    type = type || classifyToast(msg);
+    const el = document.getElementById('toast');
+    const icons = { success: 'check-circle', warning: 'alert-triangle', error: 'alert-circle', info: 'info' };
+    el.className = 'toast ' + type + ' show';
+    el.innerHTML = '<i data-lucide="' + icons[type] + '"></i><span></span>';
+    el.querySelector('span').textContent = msg;
+    renderIcons();
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+  }
+
+  const THEME_KEY = 'invoiceStudioTheme';
+  function initTheme() {
+    try {
+      const stored = localStorage.getItem(THEME_KEY);
+      if (stored === 'dark' || stored === 'light') document.documentElement.setAttribute('data-theme', stored);
+    } catch(e) {}
+  }
+  initTheme();
+  function updateThemeIcon() {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const isDark = cur === 'dark' || (!cur && matchMedia('(prefers-color-scheme: dark)').matches);
+    const el = document.getElementById('theme-toggle');
+    if (el) { el.innerHTML = `<i data-lucide="${isDark ? 'sun' : 'moon'}"></i>`; renderIcons(); }
+  }
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const isDark = cur === 'dark' || (!cur && matchMedia('(prefers-color-scheme: dark)').matches);
+    const next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem(THEME_KEY, next); } catch(e) {}
+    updateThemeIcon();
+  });
+
+  function render() {
+    // Brand mark: use active profile avatar if present, else initial
+    const mark = document.getElementById('brand-mark');
+    const active = getActiveProfile();
+    if (active?.avatarUrl) {
+      mark.innerHTML = `<img src="${active.avatarUrl}" alt="">`;
+    } else {
+      const initial = (active?.name || 'K').trim().charAt(0).toUpperCase() || 'K';
+      mark.textContent = initial;
+    }
+
+    document.querySelectorAll('.tab').forEach(t => {
+      const match = t.dataset.tab === state.route || (t.dataset.tab === 'create' && state.route === 'edit');
+      t.classList.toggle('active', match);
+    });
+
+    const root = document.getElementById('page-root');
+    if (!db) { root.innerHTML = `<div class="empty-state"><h3>Storage not available</h3><p>Open this in claude.ai to use the invoice database.</p></div>`; renderIcons(); return; }
+    if (!state.ready) { root.innerHTML = `<div class="empty-state"><p>Loading<span class="spinner" style="margin-left:8px"></span></p></div>`; return; }
+
+    if (state.route === 'dashboard') renderDashboard(root);
+    else if (state.route === 'create' || state.route === 'edit') renderEditor(root);
+    else if (state.route === 'settings') renderSettings(root);
+    else { location.hash = 'dashboard'; return; }
+
+    updateThemeIcon();
+    renderIcons();
+  }
+
+  function renderDashboard(root) {
+    const invoices = state.invoices;
+    const byStatus = { all: invoices.length, draft: 0, sent: 0, paid: 0, overdue: 0 };
+    const today = todayISO();
+    invoices.forEach(i => {
+      byStatus[i.status] = (byStatus[i.status] || 0) + 1;
+      if (i.status !== 'paid' && i.status !== 'draft' && i.dueDate && i.dueDate < today) byStatus.overdue++;
+    });
+
+    const filter = state.filter;
+    const filtered = invoices.filter(i => {
+      if (filter === 'all') return true;
+      if (filter === 'overdue') return i.status !== 'paid' && i.status !== 'draft' && i.dueDate && i.dueDate < today;
+      return i.status === filter;
+    });
+
+    const totalPaid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + computeTotals(i).total, 0);
+    const totalUnpaid = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + computeTotals(i).total, 0);
+    const totalOverdue = invoices.filter(i => i.status !== 'paid' && i.status !== 'draft' && i.dueDate && i.dueDate < today).reduce((s, i) => s + computeTotals(i).total, 0);
+
+    root.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Dashboard</h1>
+          <div class="subtitle">${invoices.length ? `${invoices.length} invoice${invoices.length === 1 ? '' : 's'} on file` : 'No invoices yet'}</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn" id="btn-bulk-import"><i data-lucide="file-plus-2"></i> Import Invoices</button>
+          <a href="#create" class="btn primary"><i data-lucide="plus"></i> New Invoice</a>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="stat-label">Paid</div><div class="stat-value">${fmtMoney(totalPaid)}</div><div class="stat-sub">${byStatus.paid || 0} invoices</div></div>
+        <div class="stat"><div class="stat-label">Outstanding</div><div class="stat-value">${fmtMoney(totalUnpaid)}</div><div class="stat-sub">${byStatus.sent || 0} invoices</div></div>
+        <div class="stat"><div class="stat-label">Overdue</div><div class="stat-value" style="color:${totalOverdue>0?'var(--danger)':'inherit'}">${fmtMoney(totalOverdue)}</div><div class="stat-sub">${byStatus.overdue || 0} invoices</div></div>
+        <div class="stat"><div class="stat-label">Drafts</div><div class="stat-value">${byStatus.draft || 0}</div><div class="stat-sub">In progress</div></div>
+      </div>
+
+      <div class="filter-row">
+        ${['all', 'draft', 'sent', 'paid', 'overdue'].map(f => `
+          <button class="filter-pill ${filter===f?'active':''}" data-filter="${f}">${labelFor(f)}<span class="count">${byStatus[f] || 0}</span></button>
+        `).join('')}
+      </div>
+
+      ${filtered.length === 0 ? `
+        <div class="empty-state">
+          <h3>${invoices.length === 0 ? 'Create your first invoice' : 'Nothing here'}</h3>
+          <p>${invoices.length === 0 ? 'Describe it in plain English and let AI fill it out, or start from scratch.' : 'No invoices match this filter.'}</p>
+          ${invoices.length === 0 ? '<a href="#create" class="btn primary"><i data-lucide="plus"></i> New Invoice</a>' : ''}
+        </div>
+      ` : `
+        <div class="invoice-list">
+          ${filtered.map(inv => invoiceRowHTML(inv, today)).join('')}
+        </div>
+      `}
+    `;
+
+    root.querySelectorAll('.filter-pill').forEach(el => el.addEventListener('click', () => { state.filter = el.dataset.filter; render(); }));
+    document.getElementById('btn-bulk-import')?.addEventListener('click', openBulkImportModal);
+    root.querySelectorAll('[data-open]').forEach(el => el.addEventListener('click', e => {
+      if (e.target.closest('[data-stop]')) return;
+      location.hash = 'edit/' + el.dataset.open;
+    }));
+    root.querySelectorAll('[data-status-trigger]').forEach(el => el.addEventListener('click', e => {
+      e.stopPropagation();
+      const pop = el.nextElementSibling;
+      document.querySelectorAll('.status-menu-pop.open').forEach(p => { if (p !== pop) p.classList.remove('open'); });
+      pop.classList.toggle('open');
+    }));
+    root.querySelectorAll('[data-set-status]').forEach(el => el.addEventListener('click', e => {
+      e.stopPropagation();
+      setStatus(el.dataset.invId, el.dataset.setStatus);
+      document.querySelectorAll('.status-menu-pop.open').forEach(p => p.classList.remove('open'));
+    }));
+    root.querySelectorAll('[data-duplicate]').forEach(el => el.addEventListener('click', e => {
+      e.stopPropagation();
+      duplicateInvoice(el.dataset.duplicate);
+    }));
+    root.querySelectorAll('[data-delete]').forEach(el => el.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = el.dataset.delete;
+      const inv = state.invoices.find(i => i.id === id);
+      openModal(`
+        <h3>Delete invoice?</h3>
+        <p style="color:var(--fg-muted); margin:0 0 4px">${escapeHtml(inv?.number || '')} for ${escapeHtml(inv?.customer?.name || 'Unknown')}</p>
+        <p style="color:var(--fg-muted); margin:0">This cannot be undone.</p>
+        <div class="modal-actions">
+          <button class="btn" data-close>Cancel</button>
+          <button class="btn solid-danger" id="confirm-del">Delete</button>
+        </div>
+      `);
+      document.getElementById('confirm-del').onclick = async () => {
+        try { await db.doc('invoices/' + id).delete(); closeModal(); toast('Invoice deleted'); }
+        catch(e) { toast('Could not delete'); }
+      };
+    }));
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.status-menu-pop.open').forEach(p => p.classList.remove('open'));
+    }, { once: true, capture: true });
+  }
+
+  function labelFor(f) { return { all: 'All', draft: 'Drafts', sent: 'Sent', paid: 'Paid', overdue: 'Overdue' }[f] || f; }
+  function effectiveStatus(inv, today) {
+    if (inv.status !== 'paid' && inv.status !== 'draft' && inv.dueDate && inv.dueDate < today) return 'overdue';
+    return inv.status;
+  }
+
+  function invoiceRowHTML(inv, today) {
+    const totals = computeTotals(inv);
+    const st = effectiveStatus(inv, today);
+    return `
+      <div class="invoice-row" data-open="${inv.id}">
+        <div class="invoice-number">${escapeHtml(inv.number || '—')}</div>
+        <div>
+          <div class="invoice-client">${escapeHtml(inv.customer?.name || 'Untitled')}</div>
+          <div class="invoice-date">Issued ${fmtDateShort(inv.issueDate)}${inv.dueDate ? ' · Due ' + fmtDateShort(inv.dueDate) : ''}</div>
+        </div>
+        <div class="invoice-amount">${fmtMoney(totals.total, inv.currency)}</div>
+        <div data-stop class="status-menu">
+          <button class="status-menu-trigger" data-status-trigger="${inv.id}">
+            <span class="status-pill status-${st}">${labelFor(st)}</span>
+          </button>
+          <div class="status-menu-pop">
+            ${['draft', 'sent', 'paid'].map(s => `<button data-set-status="${s}" data-inv-id="${inv.id}">Mark as ${labelFor(s)}</button>`).join('')}
+          </div>
+        </div>
+        <div data-stop class="invoice-row-actions">
+          <button class="icon-btn" data-duplicate="${inv.id}" title="Duplicate">
+            <i data-lucide="copy"></i>
+          </button>
+          <button class="icon-btn" data-delete="${inv.id}" title="Delete">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  async function duplicateInvoice(sourceId) {
+    const source = state.invoices.find(i => i.id === sourceId);
+    if (!source) { toast('Invoice not found'); return; }
+    const copy = JSON.parse(JSON.stringify(source));
+    copy.id = uid();
+    copy.number = nextInvoiceNumber();
+    copy.status = 'draft';
+    copy.issueDate = todayISO();
+    copy.dueDate = addDaysISO(copy.issueDate, 14);
+    copy.createdAt = Date.now();
+    copy.updatedAt = Date.now();
+    copy.items = (copy.items || []).map(it => ({ ...it, id: uid() }));
+    delete copy.imported;
+    try {
+      await db.doc('invoices/' + copy.id).set(copy);
+      state.currentDraft = copy;
+      state.draftPersisted = true;
+      state.draftCreatedEmpty = false;
+      toast('Invoice duplicated');
+      location.hash = 'edit/' + copy.id;
+    } catch(e) {
+      toast('Could not duplicate: ' + (e?.code || e?.message || 'unknown'));
+    }
+  }
+
+  async function setStatus(id, status) {
+    try { await db.doc('invoices/' + id).update({ status, updatedAt: Date.now() }); toast('Marked as ' + labelFor(status)); }
+    catch(e) { toast('Could not update'); }
+  }
+
+  function renderEditor(root) {
+    const draft = state.currentDraft;
+    if (!draft) { location.hash = 'create'; return; }
+    const isEdit = state.route === 'edit';
+
+    root.innerHTML = `
+      <a href="#dashboard" class="breadcrumb"><i data-lucide="arrow-left"></i> Back to dashboard</a>
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">${isEdit ? 'Edit Invoice' : 'Create New Invoice'}</h1>
+          <div class="subtitle" style="display:flex; align-items:center; gap:10px; margin-top:8px">
+            <span>${escapeHtml(draft.number)}</span>
+            <span class="status-menu" id="draft-status-menu">
+              <button class="status-menu-trigger">
+                <span class="status-pill status-${draft.status}">${labelFor(draft.status)}</span>
+              </button>
+              <div class="status-menu-pop">
+                <button data-draft-status="draft">Mark as Draft</button>
+                <button data-draft-status="sent">Mark as Sent</button>
+                <button data-draft-status="paid">Mark as Paid</button>
+              </div>
+            </span>
+          </div>
+        </div>
+        <div class="page-actions">
+          <span id="save-status" class="save-status"></span>
+          <button class="btn primary" id="btn-pdf"><i data-lucide="download"></i> Download PDF</button>
+        </div>
+      </div>
+
+      <div class="split">
+        <div class="card">
+          <div class="card-header-row"><h2>Invoice Details</h2></div>
+
+          ${sample ? aiBoxHTML() : ''}
+
+          <div class="card-stack">
+            <div class="field">
+              <label>Customer <span class="req">*</span></label>
+              <div class="combo-wrap">
+                <input id="f-customer-name" placeholder="Client or company name — type or pick a saved one" autocomplete="off" value="${escapeAttr(draft.customer?.name || '')}">
+                <div class="combo-list" id="customer-dropdown"></div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Billing Address <span class="req">*</span></label>
+              <textarea id="f-customer-address" rows="2" placeholder="Street, city, state, country, PIN">${escapeHtml(draft.customer?.address || '')}</textarea>
+            </div>
+            <div class="field-grid-3">
+              <div class="field">
+                <label>GST Number</label>
+                <input id="f-customer-gst" placeholder="29AAJCN7223J1Z2" value="${escapeAttr(draft.customer?.gstNumber || '')}">
+              </div>
+              <div class="field">
+                <label>Client PAN</label>
+                <input id="f-customer-pan" placeholder="ABCDE1234F" value="${escapeAttr(draft.customer?.panNumber || '')}">
+              </div>
+              <div class="field">
+                <label>Client Email</label>
+                <input id="f-customer-email" type="email" placeholder="finance@client.com" value="${escapeAttr(draft.customer?.email || '')}">
+              </div>
+            </div>
+
+            <div class="field-grid-3">
+              <div class="field">
+                <label>Invoice No. <span class="req">*</span></label>
+                <input id="f-number" value="${escapeAttr(draft.number)}">
+              </div>
+              <div class="field">
+                <label>Issue Date <span class="req">*</span></label>
+                <input id="f-issue-date" type="date" value="${escapeAttr(draft.issueDate)}">
+              </div>
+              <div class="field">
+                <label>Due Date <span class="req">*</span></label>
+                <input id="f-due-date" type="date" value="${escapeAttr(draft.dueDate)}">
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Currency</label>
+              <select id="f-currency">
+                ${['INR','USD','EUR','GBP','AUD','CAD','SGD','AED'].map(c => `<option value="${c}" ${draft.currency===c?'selected':''}>${c}</option>`).join('')}
+              </select>
+            </div>
+
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+                <label style="font-size:13px; font-weight:500; margin:0">Items</label>
+                <button class="btn btn-xs" id="btn-add-item"><i data-lucide="plus"></i> Add line</button>
+              </div>
+              <div class="items-header">
+                <div>Description</div><div>Qty</div><div>Rate</div><div>Amount</div><div></div>
+              </div>
+              <div class="items" id="items-list">
+                ${draft.items.map((it, idx) => itemRowHTML(it, idx, draft.currency)).join('')}
+              </div>
+            </div>
+
+            <div class="field-grid-3">
+              <div class="field">
+                <label>Discount</label>
+                <input id="f-discount" type="number" min="0" step="0.01" value="${draft.discount || 0}">
+              </div>
+              <div class="field">
+                <label>GST (%)</label>
+                <input id="f-gst-percent" type="number" min="0" step="0.01" value="${draft.gstPercent || 0}">
+              </div>
+              <div class="field">
+                <label>Total</label>
+                <input id="f-total-display" value="${fmtMoney(computeTotals(draft).total, draft.currency)}" disabled style="font-weight:600">
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Receive to</label>
+              <select id="f-bank">
+                <option value="">— No bank —</option>
+                ${state.banks.map(b => `<option value="${b.id}" ${draft.bankId===b.id?'selected':''}>${escapeHtml(b.name)} ${b.type==='international'?'(International)':'(Domestic)'}</option>`).join('')}
+              </select>
+              ${state.banks.length === 0 ? '<div class="ai-hint" style="margin-top:6px">No bank accounts yet. <a href="#settings" style="color:inherit">Add one in Settings →</a></div>' : ''}
+            </div>
+
+            ${state.methods.length ? `
+              <div class="field">
+                <label>Alternate payment methods</label>
+                <div class="multi-select" id="methods-select">
+                  ${state.methods.map(m => `
+                    <button type="button" class="multi-select-chip ${draft.methodIds?.includes(m.id)?'on':''}" data-method-id="${m.id}">${brandLogoHTML(m.label, 'chip-logo')}${escapeHtml(m.label)}</button>
+                  `).join('')}
+                </div>
+              </div>
+            ` : '<div class="ai-hint">Add PayPal, UPI, Paytm etc. in <a href="#settings" style="color:inherit">Settings →</a></div>'}
+
+            <div class="field">
+              <label>Notes to Customer</label>
+              <textarea id="f-notes" rows="3" placeholder="Thank you for your trust. Please complete the payment before the due date.">${escapeHtml(draft.notes || '')}</textarea>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <div class="preview-head">
+              <h2>Preview</h2>
+              <span class="sub">A4 · ${draft.currency}</span>
+            </div>
+            <div class="preview-scroll" id="preview-scroll">
+              ${invoiceHTML(draft)}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    wireEditor();
+  }
+
+  function aiBoxHTML() {
+    const chips = state.aiImages.map((f, i) => `
+      <span class="ai-chip">
+        <i data-lucide="image"></i> ${escapeHtml(f.name || ('image-' + (i+1)))}
+        <button type="button" class="ai-chip-x" data-ai-remove="${i}" title="Remove"><i data-lucide="x"></i></button>
+      </span>
+    `).join('');
+    return `
+      <div class="ai-box">
+        <div class="ai-label"><i data-lucide="sparkles"></i> Generate with AI</div>
+        <div class="ai-row">
+          <textarea id="ai-input" placeholder="Describe the invoice, paste a screenshot (Cmd/Ctrl+V), or attach images/PDFs below"></textarea>
+          <button class="btn primary" id="btn-ai">${state.aiLoading ? '<span class="spinner"></span>' : 'Generate'}</button>
+        </div>
+        <div class="ai-attach-row">
+          <input type="file" id="ai-image-input" accept="image/*,application/pdf" multiple hidden>
+          <button type="button" class="btn btn-xs ghost" id="btn-ai-attach"><i data-lucide="image-plus"></i> Attach images</button>
+          <div class="ai-chips" id="ai-chips">${chips}</div>
+        </div>
+        <div class="ai-hint">Type a description, paste (Cmd/Ctrl+V) a screenshot, or attach image/PDF files. AI fills the form.</div>
+      </div>
+    `;
+  }
+
+  function itemRowHTML(it, idx, currency) {
+    const amount = (Number(it.qty) || 0) * (Number(it.rate) || 0);
+    return `
+      <div class="item-row" data-item-id="${it.id}">
+        <input placeholder="Service or product" data-item-field="description" value="${escapeAttr(it.description || '')}">
+        <input type="number" min="0" step="any" placeholder="1" data-item-field="qty" value="${it.qty ?? ''}">
+        <input type="number" min="0" step="any" placeholder="0" data-item-field="rate" value="${it.rate ?? ''}">
+        <div class="amount-cell">${fmtMoney(amount, currency)}</div>
+        <button class="icon-btn" data-remove-item="${it.id}" title="Remove">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+    `;
+  }
+
+  function wireEditor() {
+    const draft = state.currentDraft;
+
+    const simple = [
+      ['f-customer-name', v => draft.customer.name = v],
+      ['f-customer-address', v => draft.customer.address = v],
+      ['f-customer-gst', v => draft.customer.gstNumber = v],
+      ['f-customer-email', v => draft.customer.email = v],
+      ['f-customer-pan', v => draft.customer.panNumber = v],
+      ['f-number', v => draft.number = v],
+      ['f-issue-date', v => draft.issueDate = v],
+      ['f-due-date', v => draft.dueDate = v],
+      ['f-notes', v => draft.notes = v],
+      ['f-bank', v => draft.bankId = v],
+    ];
+    simple.forEach(([id, fn]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', () => { fn(el.value); updatePreview(); scheduleAutoSave(); });
+    });
+
+    // Customer autocomplete dropdown — opens on focus, closes on outside click
+    const custInput = document.getElementById('f-customer-name');
+    if (custInput) {
+      custInput.addEventListener('focus', openCustomerDropdown);
+      custInput.addEventListener('input', () => renderCustomerDropdown(custInput.value));
+      custInput.addEventListener('blur', () => setTimeout(closeCustomerDropdown, 180));
+      custInput.addEventListener('keydown', e => { if (e.key === 'Escape') closeCustomerDropdown(); });
+    }
+
+    document.getElementById('f-gst-percent')?.addEventListener('input', e => { draft.gstPercent = Number(e.target.value) || 0; updateTotalsAndPreview(); scheduleAutoSave(); });
+    document.getElementById('f-discount')?.addEventListener('input', e => { draft.discount = Number(e.target.value) || 0; updateTotalsAndPreview(); scheduleAutoSave(); });
+    document.getElementById('f-currency')?.addEventListener('change', e => { draft.currency = e.target.value; renderEditor(document.getElementById('page-root')); renderIcons(); scheduleAutoSave(); });
+
+    document.getElementById('btn-add-item')?.addEventListener('click', () => {
+      draft.items.push({ id: uid(), description: '', qty: 1, rate: 0 });
+      renderEditor(document.getElementById('page-root'));
+      renderIcons();
+      scheduleAutoSave();
+    });
+
+    document.querySelectorAll('[data-remove-item]').forEach(btn => btn.addEventListener('click', () => {
+      const id = btn.dataset.removeItem;
+      draft.items = draft.items.filter(i => i.id !== id);
+      if (draft.items.length === 0) draft.items.push({ id: uid(), description: '', qty: 1, rate: 0 });
+      renderEditor(document.getElementById('page-root'));
+      renderIcons();
+      scheduleAutoSave();
+    }));
+
+    document.querySelectorAll('[data-item-field]').forEach(inp => inp.addEventListener('input', () => {
+      const row = inp.closest('.item-row');
+      const id = row.dataset.itemId;
+      const field = inp.dataset.itemField;
+      const item = draft.items.find(i => i.id === id);
+      if (!item) return;
+      if (field === 'description') item.description = inp.value;
+      else item[field] = Number(inp.value) || 0;
+      const amt = (Number(item.qty) || 0) * (Number(item.rate) || 0);
+      row.querySelector('.amount-cell').textContent = fmtMoney(amt, draft.currency);
+      updateTotalsAndPreview();
+      scheduleAutoSave();
+    }));
+
+    document.querySelectorAll('[data-method-id]').forEach(btn => btn.addEventListener('click', () => {
+      const id = btn.dataset.methodId;
+      draft.methodIds = draft.methodIds || [];
+      if (draft.methodIds.includes(id)) draft.methodIds = draft.methodIds.filter(x => x !== id);
+      else draft.methodIds.push(id);
+      btn.classList.toggle('on');
+      updatePreview();
+      scheduleAutoSave();
+    }));
+
+    document.getElementById('btn-pdf')?.addEventListener('click', downloadPDF);
+    document.getElementById('btn-ai')?.addEventListener('click', aiGenerate);
+    document.getElementById('btn-ai-attach')?.addEventListener('click', () => document.getElementById('ai-image-input').click());
+    document.getElementById('ai-image-input')?.addEventListener('change', e => {
+      const files = Array.from(e.target.files || []);
+      state.aiImages = (state.aiImages || []).concat(files);
+      e.target.value = '';
+      // Re-render just the ai box
+      const parent = document.getElementById('ai-chips');
+      if (parent) {
+        parent.innerHTML = state.aiImages.map((f, i) => `
+          <span class="ai-chip"><i data-lucide="image"></i> ${escapeHtml(f.name || ('image-' + (i+1)))}
+            <button type="button" class="ai-chip-x" data-ai-remove="${i}"><i data-lucide="x"></i></button></span>
+        `).join('');
+        renderIcons();
+        wireAiChips();
+      }
+    });
+    wireAiChips();
+
+    // Draft status menu wiring
+    document.querySelectorAll('[data-draft-status]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      draft.status = b.dataset.draftStatus;
+      scheduleAutoSave();
+      renderEditor(document.getElementById('page-root'));
+      renderIcons();
+    }));
+    document.querySelector('#draft-status-menu .status-menu-trigger')?.addEventListener('click', e => {
+      e.stopPropagation();
+      const pop = document.querySelector('#draft-status-menu .status-menu-pop');
+      pop?.classList.toggle('open');
+      document.addEventListener('click', function off() { pop?.classList.remove('open'); document.removeEventListener('click', off); }, true);
+    });
+  }
+
+  function updateTotalsAndPreview() {
+    const td = document.getElementById('f-total-display');
+    if (td) td.value = fmtMoney(computeTotals(state.currentDraft).total, state.currentDraft.currency);
+    updatePreview();
+  }
+  function updatePreview() {
+    const el = document.getElementById('preview-scroll');
+    if (el) el.innerHTML = invoiceHTML(state.currentDraft);
+  }
+
+  async function saveDraft(markSent) {
+    if (state.saving) return;
+    const d = state.currentDraft;
+    if (!d.customer?.name?.trim()) { toast('Please add a customer name'); return; }
+    state.saving = true;
+    if (markSent && d.status === 'draft') d.status = 'sent';
+    d.updatedAt = Date.now();
+    try {
+      await db.doc('invoices/' + d.id).set(d);
+      toast(markSent ? 'Invoice sent' : 'Saved to drafts');
+      state.saving = false;
+      state.currentDraft = null;
+      location.hash = 'dashboard';
+    } catch(e) {
+      state.saving = false;
+      toast('Could not save: ' + (e?.code || e?.message || 'unknown'));
+      render();
+    }
+  }
+
+  // Paste support: Cmd/Ctrl+V with image data anywhere on the page while on the editor
+  let pasteWired = false;
+  function wirePaste() {
+    if (pasteWired) return;
+    pasteWired = true;
+    document.addEventListener('paste', (e) => {
+      if (state.route !== 'create' && state.route !== 'edit') return;
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      const newFiles = [];
+      for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) newFiles.push(file);
+        }
+      }
+      if (!newFiles.length) return;
+      e.preventDefault();
+      state.aiImages = (state.aiImages || []).concat(newFiles);
+      const parent = document.getElementById('ai-chips');
+      if (parent) {
+        parent.innerHTML = state.aiImages.map((f, i) => `
+          <span class="ai-chip"><i data-lucide="image"></i> ${escapeHtml(f.name || ('pasted-' + (i+1) + '.png'))}
+            <button type="button" class="ai-chip-x" data-ai-remove="${i}"><i data-lucide="x"></i></button></span>
+        `).join('');
+        renderIcons();
+        wireAiChips();
+      }
+      toast(newFiles.length + ' image' + (newFiles.length === 1 ? '' : 's') + ' pasted');
+    });
+  }
+
+  // --- Customer autocomplete: pulled from existing invoices, newest definition wins ---
+  function getSavedCustomers() {
+    const map = new Map();
+    const sorted = [...state.invoices].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    for (const inv of sorted) {
+      const c = (inv.customer || {});
+      const name = (c.name || '').trim();
+      if (!name) continue;
+      if (map.has(name)) continue;
+      map.set(name, {
+        name,
+        address: c.address || '',
+        gstNumber: c.gstNumber || '',
+        panNumber: c.panNumber || '',
+        email: c.email || '',
+      });
+    }
+    return Array.from(map.values());
+  }
+
+  function renderCustomerDropdown(query) {
+    const dropdown = document.getElementById('customer-dropdown');
+    if (!dropdown) return;
+    const q = (query || '').toLowerCase().trim();
+    const saved = getSavedCustomers();
+    const filtered = q ? saved.filter(c => c.name.toLowerCase().includes(q)) : saved;
+    if (saved.length === 0) {
+      dropdown.innerHTML = '<div class="combo-empty">No saved customers yet — type to add one</div>';
+    } else if (filtered.length === 0) {
+      dropdown.innerHTML = '<div class="combo-empty">No saved customer matches — keep typing to add new</div>';
+    } else {
+      dropdown.innerHTML = filtered.map((c, i) => {
+        const sub1 = c.address ? c.address.split('\n')[0].slice(0, 70) : '';
+        const sub2 = [c.gstNumber && 'GST ' + c.gstNumber, c.panNumber && 'PAN ' + c.panNumber, c.email].filter(Boolean).join(' · ');
+        return `
+          <div class="combo-item" data-customer-i="${i}">
+            <div class="combo-item-name">${escapeHtml(c.name)}</div>
+            ${sub1 ? `<div class="combo-item-sub">${escapeHtml(sub1)}</div>` : ''}
+            ${sub2 ? `<div class="combo-item-sub">${escapeHtml(sub2)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+    dropdown._customers = filtered;
+    // mousedown fires BEFORE blur, so the dropdown doesn't vanish before click lands
+    dropdown.querySelectorAll('[data-customer-i]').forEach(el => {
+      el.addEventListener('mousedown', ev => {
+        ev.preventDefault();
+        const i = Number(el.dataset.customerI);
+        selectSavedCustomer(dropdown._customers[i]);
+      });
+    });
+  }
+
+  function openCustomerDropdown() {
+    const input = document.getElementById('f-customer-name');
+    renderCustomerDropdown(input?.value || '');
+    document.getElementById('customer-dropdown')?.classList.add('open');
+  }
+  function closeCustomerDropdown() {
+    document.getElementById('customer-dropdown')?.classList.remove('open');
+  }
+  function selectSavedCustomer(c) {
+    if (!c || !state.currentDraft) return;
+    state.currentDraft.customer = {
+      name: c.name,
+      address: c.address || '',
+      gstNumber: c.gstNumber || '',
+      panNumber: c.panNumber || '',
+      email: c.email || '',
+    };
+    // Update the input values in the DOM
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    set('f-customer-name', c.name);
+    set('f-customer-address', c.address);
+    set('f-customer-gst', c.gstNumber);
+    set('f-customer-pan', c.panNumber);
+    set('f-customer-email', c.email);
+    closeCustomerDropdown();
+    updatePreview();
+    scheduleAutoSave();
+    toast('Loaded ' + c.name);
+  }
+
+  function wireAiChips() {
+    document.querySelectorAll('[data-ai-remove]').forEach(b => b.addEventListener('click', () => {
+      const i = Number(b.dataset.aiRemove);
+      state.aiImages.splice(i, 1);
+      const parent = document.getElementById('ai-chips');
+      if (parent) {
+        parent.innerHTML = state.aiImages.map((f, i2) => `
+          <span class="ai-chip"><i data-lucide="image"></i> ${escapeHtml(f.name || ('image-' + (i2+1)))}
+            <button type="button" class="ai-chip-x" data-ai-remove="${i2}"><i data-lucide="x"></i></button></span>
+        `).join('');
+        renderIcons();
+        wireAiChips();
+      }
+    }));
+  }
+
+  async function pdfToImageBlobs(file, maxPages = 5, scale = 1.6) {
+    if (!window.pdfjsLib) throw new Error('PDF reader not loaded yet');
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const blobs = [];
+    const n = Math.min(pdf.numPages, maxPages);
+    for (let i = 1; i <= n; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.86));
+      if (blob) blobs.push(blob);
+    }
+    return blobs;
+  }
+
+  async function fileToImageBlobs(file) {
+    // Returns an array of image Blobs — one for an image file, one per page for a PDF.
+    if (file.type === 'application/pdf' || (file.name || '').toLowerCase().endsWith('.pdf')) {
+      return await pdfToImageBlobs(file);
+    }
+    return [await resizeImageToBlob(file, 1600, 0.86)];
+  }
+
+  function resizeImageToBlob(file, maxDim, quality) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          c.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/jpeg', quality);
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function aiGenerate() {
+    if (!sample) { toast('AI not available'); return; }
+    const input = document.getElementById('ai-input')?.value?.trim() || '';
+    const images = state.aiImages || [];
+    if (!input && images.length === 0) { toast('Describe the invoice or attach an image first'); return; }
+    state.aiLoading = true;
+    const btn = document.getElementById('btn-ai');
+    btn.innerHTML = '<span class="spinner"></span>'; btn.disabled = true;
+
+    const today = todayISO();
+    const source = images.length > 0
+      ? (input ? `Extra context from the user: "${input}". Extract invoice data from the attached image(s).` : 'Extract invoice data from the attached image(s).')
+      : `Extract invoice data from this description. Description: "${input}"`;
+    const prompt = `You are an invoice data extractor. Today is ${today}. ${source}
+
+Respond with ONLY a JSON object. Do not write any text before or after. Start your reply with { and end with }. Match this schema:
+{
+  "customer": { "name": "string", "address": "string", "gstNumber": "string", "panNumber": "string", "email": "string" },
+  "items": [ { "description": "string", "qty": number, "rate": number } ],
+  "currency": "INR|USD|EUR|GBP|AUD|CAD|SGD|AED",
+  "gstPercent": number,
+  "discount": number,
+  "dueDays": number,
+  "notes": "string",
+  "number": "string (invoice number if visible on the image, else empty)",
+  "issueDate": "string (YYYY-MM-DD if date is visible, else empty)",
+  "status": "paid|sent|draft (your best guess from any paid/unpaid marks)"
+}
+
+Rules: Parse amounts like "50k", "40,000", "₹40000" correctly. If qty not specified, use 1. Default currency INR for ₹ symbol. Default dueDays 14. If reading from an image, prefer the invoice's own dates and number over defaults.`;
+
+    try {
+      // Convert each attachment to one or more image blobs (PDF pages → images, photos → resized)
+      let imageBlobs = [];
+      for (const f of images) {
+        try {
+          const blobs = await fileToImageBlobs(f);
+          imageBlobs = imageBlobs.concat(blobs);
+        } catch(e) {
+          console.warn('Skipping attachment', f?.name, e);
+        }
+      }
+      // Cap to 10 images in one call to keep model focused and cost reasonable
+      if (imageBlobs.length > 10) imageBlobs = imageBlobs.slice(0, 10);
+      const opts = { modelTier: images.length > 0 ? 'complex' : 'default' };
+      if (imageBlobs.length > 0) opts.images = imageBlobs;
+      const data = await sample.json(prompt, opts);
+      if (data && typeof data === 'object') {
+        const d = state.currentDraft;
+        if (data.customer) {
+          d.customer = {
+            name: data.customer.name || d.customer.name,
+            address: data.customer.address || d.customer.address,
+            gstNumber: data.customer.gstNumber || d.customer.gstNumber,
+            panNumber: data.customer.panNumber || d.customer.panNumber,
+            email: data.customer.email || d.customer.email,
+          };
+        }
+        if (Array.isArray(data.items) && data.items.length) {
+          d.items = data.items.map(it => ({ id: uid(), description: it.description || '', qty: Number(it.qty) || 1, rate: Number(it.rate) || 0 }));
+        }
+        if (data.currency) d.currency = data.currency;
+        if (typeof data.gstPercent === 'number') d.gstPercent = data.gstPercent;
+        if (typeof data.discount === 'number') d.discount = data.discount;
+        if (data.issueDate) d.issueDate = data.issueDate;
+        if (typeof data.dueDays === 'number') d.dueDate = addDaysISO(d.issueDate, data.dueDays);
+        if (data.notes) d.notes = data.notes;
+        if (data.number) d.number = data.number;
+        if (data.status && ['draft','sent','paid'].includes(data.status)) d.status = data.status;
+        state.aiImages = [];
+        toast('Invoice filled from AI');
+        scheduleAutoSave();
+      }
+    } catch(e) {
+      console.error('AI generation failed', e);
+      const msg = (e && (e.message || e.code)) || (typeof e === 'string' ? e : 'Unknown error');
+      if (e?.code === 'not_granted') toast('Set your API key in Settings → Data & AI');
+      else if (e?.code === 'rate_limited') toast('Rate limited, try again shortly');
+      else toast('AI: ' + String(msg).slice(0, 140));
+    }
+    state.aiLoading = false;
+    renderEditor(document.getElementById('page-root'));
+    renderIcons();
+  }
+
+  /* Invoice preview — matches the reference layout (image 3): big "Invoice" title,
+     small avatar circle beside name, right-aligned contact block, double rule,
+     "Billed To" with labeled address, GST, invoice date, table with vertical column dividers,
+     totals summary rows in-table, payment info block, footer. */
+  function invoiceHTML(inv) {
+    const p = getActiveProfile() || DEFAULT_PROFILE;
+    const totals = computeTotals(inv);
+    const bank = state.banks.find(b => b.id === inv.bankId)
+              || state.banks.find(b => b.type === 'domestic')
+              || state.banks[0];
+    const methods = (inv.methodIds || []).map(id => state.methods.find(m => m.id === id)).filter(Boolean);
+    const curSym = { INR: '₹', USD: '$', EUR: '€', GBP: '£' }[inv.currency] || (inv.currency + ' ');
+    const money = (n) => curSym + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    const initial = (p.name || 'K').trim().charAt(0).toUpperCase();
+    const avatarEl = p.avatarUrl
+      ? `<div class="inv-avatar"><img src="${p.avatarUrl}" alt=""></div>`
+      : `<div class="inv-avatar">${escapeHtml(initial)}</div>`;
+    const footer = (p.footerNote || '').replace('{email}', p.email || '');
+
+    const addrLines = (inv.customer?.address || '').split('\n').filter(l => l.trim());
+
+    return `
+      <div class="invoice-paper" id="invoice-paper">
+        <div class="inv-head">
+          <h1 class="inv-title">Invoice</h1>
+          <div class="inv-from">
+            <div class="inv-from-top">
+              <div class="inv-from-id">
+                <div class="inv-from-name">${escapeHtml(p.name || 'Your Name')}</div>
+                <div class="inv-from-role">${escapeHtml(p.role || '')}</div>
+              </div>
+              ${avatarEl}
+            </div>
+            <div class="inv-contact-sep"></div>
+            <div class="inv-contact">
+              ${p.email ? `<div>${escapeHtml(p.email)}</div>` : ''}
+              ${p.phone ? `<div>${escapeHtml(p.phone)}</div>` : ''}
+              ${p.address ? `<div>${nl2br(p.address)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+
+        <div class="inv-double-rule"><hr><hr></div>
+
+        <div class="inv-billed">
+          <div class="inv-billed-head">Billed To:</div>
+          ${inv.customer?.name ? `<div class="inv-billed-name">${escapeHtml(inv.customer.name)}</div>` : ''}
+          ${addrLines.length ? `
+            <div class="inv-billed-addr-label">Address</div>
+            ${addrLines.map(l => `<div class="inv-billed-addr-line">${escapeHtml(l)}</div>`).join('')}
+          ` : ''}
+          ${inv.customer?.gstNumber ? `<div class="inv-billed-gst"><b>GST Number</b> - ${escapeHtml(inv.customer.gstNumber)}</div>` : ''}
+          ${inv.customer?.panNumber ? `<div class="inv-billed-gst"><b>PAN</b> - ${escapeHtml(inv.customer.panNumber)}</div>` : ''}
+        </div>
+
+        <div class="inv-thin-rule"></div>
+
+        <div class="inv-date-row"><b>Invoice Date:</b> ${fmtDate(inv.issueDate)}</div>
+
+        <table class="inv-table">
+          <thead>
+            <tr><th style="width:46%">Description</th><th>Rate</th><th>Qty</th><th>Amount</th></tr>
+          </thead>
+          <tbody>
+            ${inv.items.filter(it => it.description || it.qty || it.rate).map(it => `
+              <tr>
+                <td>${escapeHtml(it.description || '')}</td>
+                <td>${it.rate ? money(it.rate) : ''}</td>
+                <td>${it.qty || ''}</td>
+                <td>${money((Number(it.qty)||0)*(Number(it.rate)||0))}</td>
+              </tr>
+            `).join('')}
+            ${inv.discount ? `<tr class="sum-row"><td></td><td></td><td class="sum-label">Discount</td><td>−${money(inv.discount)}</td></tr>` : ''}
+            <tr class="sum-row"><td></td><td></td><td class="sum-label">GST (%)</td><td>${inv.gstPercent || 0}</td></tr>
+            <tr class="sum-row"><td></td><td></td><td class="sum-label">GST Amount</td><td>${money(totals.gst)}</td></tr>
+            <tr class="sum-row total"><td></td><td></td><td class="sum-label">Total</td><td>${money(totals.total)}</td></tr>
+          </tbody>
+        </table>
+
+        <div class="inv-payment">
+          <div class="inv-payment-head">Payment Information</div>
+          <div class="inv-payment-grid">
+            <div>
+              ${inv.dueDate ? `<div class="row"><span class="k">Payment Due Date:</span> ${fmtDateUS(inv.dueDate)}</div>` : ''}
+              ${bank ? `
+                <div class="row"><span class="k">Bank Name:</span> ${brandLogoHTML(bank.name, 'inv-brand-logo')}${escapeHtml(bank.name)}</div>
+                ${bank.accountName ? `<div class="row"><span class="k">Account Name:</span> ${escapeHtml(bank.accountName)}</div>` : ''}
+                ${bank.accountNumber ? `<div class="row"><span class="k">Account Number:</span> ${escapeHtml(bank.accountNumber)}</div>` : ''}
+                ${bank.ifsc ? `<div class="row"><span class="k">IFSC Code:</span> ${escapeHtml(bank.ifsc)}</div>` : ''}
+                ${bank.swiftCode ? `<div class="row"><span class="k">SWIFT:</span> ${escapeHtml(bank.swiftCode)}</div>` : ''}
+                ${bank.bankAddress ? `<div class="row"><span class="k">Bank Address:</span> ${escapeHtml(bank.bankAddress)}</div>` : ''}
+              ` : ''}
+              ${p.panNumber ? `<div class="row"><span class="k">PAN:</span> ${escapeHtml(p.panNumber)}</div>` : ''}
+            </div>
+            <div>
+              ${methods.length ? `
+                <div class="row" style="font-weight:600; color:#0a0a0a; margin-bottom:4px">Other Payment Methods</div>
+                ${methods.map(m => `<div class="row">${brandLogoHTML(m.label, 'inv-brand-logo')}${escapeHtml(m.label)}: <b>${escapeHtml(m.value)}</b></div>`).join('')}
+              ` : ''}
+            </div>
+          </div>
+          ${inv.notes ? `
+            <div class="inv-notes">
+              <div class="inv-notes-head">Notes</div>
+              <div class="inv-notes-body">${nl2br(inv.notes)}</div>
+            </div>
+          ` : ''}
+        </div>
+
+        ${footer ? `<div class="inv-foot">${escapeHtml(footer)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  async function downloadPDF() {
+    const paper = document.getElementById('invoice-paper');
+    if (!paper || !window.html2canvas || !window.jspdf) { toast('PDF engine not loaded'); return; }
+    toast('Rendering PDF…');
+    try {
+      const canvas = await html2canvas(paper, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW;
+      const imgH = canvas.height * (pageW / canvas.width);
+      let heightLeft = imgH; let position = 0;
+      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+      while (heightLeft > 0) {
+        position = heightLeft - imgH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+        heightLeft -= pageH;
+      }
+      const filename = `${state.currentDraft.number || 'invoice'}-${(state.currentDraft.customer?.name || 'client').replace(/[^a-z0-9]+/ig, '-')}.pdf`;
+      const blob = pdf.output('blob');
+      if (downloads) {
+        await downloads.save({ filename, data: blob });
+        toast('PDF saved');
+      } else {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        toast('PDF opened');
+      }
+    } catch(e) {
+      toast('PDF failed: ' + (e?.message || 'unknown'));
+    }
+  }
+
+  function renderSettings(root) {
+    const tab = state.settingsTab;
+    root.innerHTML = `
+      <a href="#dashboard" class="breadcrumb"><i data-lucide="arrow-left"></i> Back to dashboard</a>
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Settings</h1>
+          <div class="subtitle">These details auto-fill every new invoice</div>
+        </div>
+      </div>
+
+      <div class="settings-tabs">
+        <button class="settings-tab ${tab==='profile'?'active':''}" data-s-tab="profile">Profile</button>
+        <button class="settings-tab ${tab==='banks'?'active':''}" data-s-tab="banks">Bank Accounts</button>
+        <button class="settings-tab ${tab==='methods'?'active':''}" data-s-tab="methods">Payment Methods</button>
+        <button class="settings-tab ${tab==='data'?'active':''}" data-s-tab="data">Data &amp; AI</button>
+      </div>
+
+      ${tab === 'profile' ? profilePanel() : tab === 'banks' ? banksPanel() : tab === 'methods' ? methodsPanel() : dataPanel()}
+    `;
+    root.querySelectorAll('.settings-tab').forEach(t => t.addEventListener('click', () => { state.settingsTab = t.dataset.sTab; render(); }));
+    if (tab === 'profile') wireProfile();
+    if (tab === 'banks') wireBanks();
+    if (tab === 'methods') wireMethods();
+    if (tab === 'data') wireData();
+  }
+
+  function dataPanel() {
+    const key = localStorage.getItem('invoiceStudio.anthropicKey') || '';
+    const model = localStorage.getItem('invoiceStudio.aiModel') || 'claude-3-5-haiku-20241022';
+    const maskedKey = key ? key.slice(0, 7) + '…' + key.slice(-4) : '';
+    return `
+      <div class="card">
+        <div class="card-header-row"><h2>AI Generation</h2></div>
+        <p style="color:var(--fg-muted); font-size:13px; margin:0 0 16px">The "Generate with AI" box on the invoice editor calls the Anthropic API directly from your browser. Add your own API key to enable it. Your key is stored only in this browser's local storage and sent only to Anthropic.</p>
+        <div class="card-stack">
+          <div class="field">
+            <label>Anthropic API Key</label>
+            <input id="d-apikey" type="password" value="${escapeAttr(key)}" placeholder="sk-ant-...">
+            ${maskedKey ? `<div style="font-size:12px; color:var(--fg-subtle); margin-top:4px">Currently stored: <code style="font-family:var(--mono)">${escapeHtml(maskedKey)}</code></div>` : ''}
+          </div>
+          <div class="field">
+            <label>Model</label>
+            <select id="d-model">
+              <option value="claude-3-5-haiku-20241022" ${model==='claude-3-5-haiku-20241022'?'selected':''}>Claude Haiku 3.5 (fast, cheap)</option>
+              <option value="claude-3-5-sonnet-20241022" ${model==='claude-3-5-sonnet-20241022'?'selected':''}>Claude Sonnet 3.5</option>
+              <option value="claude-sonnet-4-20250514" ${model==='claude-sonnet-4-20250514'?'selected':''}>Claude Sonnet 4</option>
+            </select>
+            <div style="font-size:12px; color:var(--fg-subtle); margin-top:4px">Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:inherit">console.anthropic.com</a></div>
+          </div>
+        </div>
+        <div class="page-actions" style="margin-top:20px; justify-content:flex-end">
+          ${key ? '<button class="btn danger-outline" id="d-apikey-clear"><i data-lucide="x"></i> Remove Key</button>' : ''}
+          <button class="btn primary" id="d-apikey-save"><i data-lucide="check"></i> Save</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-header-row"><h2>Backup &amp; Restore</h2></div>
+        <p style="color:var(--fg-muted); font-size:13px; margin:0 0 16px">All your data lives in this browser. Export a JSON backup to move to another device or keep a safety copy. Importing replaces everything currently stored.</p>
+        <div class="page-actions" style="justify-content:flex-start; flex-wrap:wrap">
+          <button class="btn" id="d-export"><i data-lucide="download"></i> Export JSON</button>
+          <button class="btn" id="d-import-pick"><i data-lucide="upload"></i> Import JSON</button>
+          <input type="file" id="d-import-file" accept="application/json,.json" style="display:none">
+          <button class="btn danger-outline" id="d-clear"><i data-lucide="trash-2"></i> Clear All Data</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-header-row"><h2>About</h2></div>
+        <div style="font-size:13px; color:var(--fg-muted); line-height:1.6">
+          <p style="margin:0 0 8px"><b style="color:var(--fg)">Bill Studio</b> runs entirely in your browser. Your profile, banks, payment methods and invoices are stored in <code style="font-family:var(--mono); font-size:12px">localStorage</code> on this device only.</p>
+          <p style="margin:0 0 8px">To use it on another device, export your data here and import it there, or use a sync service. Your PDFs download directly from the browser.</p>
+          <p style="margin:0">Icons by <a href="https://lucide.dev" target="_blank" rel="noopener" style="color:inherit">Lucide</a> · PDF by jsPDF + html2canvas · Fonts from Google Fonts.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireData() {
+    document.getElementById('d-apikey-save')?.addEventListener('click', () => {
+      const v = document.getElementById('d-apikey').value.trim();
+      const m = document.getElementById('d-model').value;
+      if (v) localStorage.setItem('invoiceStudio.anthropicKey', v);
+      localStorage.setItem('invoiceStudio.aiModel', m);
+      toast('AI settings saved');
+      render();
+    });
+    document.getElementById('d-apikey-clear')?.addEventListener('click', () => {
+      localStorage.removeItem('invoiceStudio.anthropicKey');
+      toast('API key removed');
+      render();
+    });
+    document.getElementById('d-export')?.addEventListener('click', () => {
+      const data = window.__invoiceExport ? window.__invoiceExport() : {};
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'invoice-studio-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+      toast('Backup downloaded');
+    });
+    document.getElementById('d-import-pick')?.addEventListener('click', () => document.getElementById('d-import-file').click());
+    document.getElementById('d-import-file')?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (!parsed || typeof parsed !== 'object') throw new Error('Invalid');
+        openModal(`
+          <h3>Import backup?</h3>
+          <p style="color:var(--fg-muted); margin:0 0 8px">This replaces ALL current data — ${Object.keys(parsed).length} records from the backup file.</p>
+          <p style="color:var(--fg-muted); margin:0">Make sure you've exported your current data first if you want to keep it.</p>
+          <div class="modal-actions">
+            <button class="btn" data-close>Cancel</button>
+            <button class="btn solid-danger" id="confirm-import">Replace &amp; Import</button>
+          </div>
+        `);
+        document.getElementById('confirm-import').onclick = () => {
+          window.__invoiceImport && window.__invoiceImport(parsed);
+          closeModal();
+          toast('Backup imported');
+        };
+      } catch(err) { toast('Could not read file: ' + (err?.message || 'invalid JSON')); }
+      e.target.value = '';
+    });
+    document.getElementById('d-clear')?.addEventListener('click', () => {
+      openModal(`
+        <h3>Clear all data?</h3>
+        <p style="color:var(--fg-muted); margin:0 0 8px">Every profile, bank, payment method and invoice stored in this browser will be wiped.</p>
+        <p style="color:var(--fg-muted); margin:0">This cannot be undone. Consider exporting a backup first.</p>
+        <div class="modal-actions">
+          <button class="btn" data-close>Cancel</button>
+          <button class="btn solid-danger" id="confirm-clear">Clear Everything</button>
+        </div>
+      `);
+      document.getElementById('confirm-clear').onclick = () => {
+        window.__invoiceClear && window.__invoiceClear();
+        closeModal();
+        toast('All data cleared');
+      };
+    });
+  }
+
+  function profilePanel() {
+    return `
+      <div class="card">
+        <div class="card-header-row">
+          <h2>Sender Profiles</h2>
+          <button class="btn btn-sm primary" id="add-profile"><i data-lucide="plus"></i> Add Profile</button>
+        </div>
+        ${state.profiles.length === 0 ? `
+          <div class="empty-state" style="padding:40px 20px">
+            <h3>No profiles yet</h3>
+            <p>Add a sender profile — the name, address, contact and avatar that appears on every invoice.</p>
+            <button class="btn primary" id="add-profile-empty"><i data-lucide="plus"></i> Add Your First Profile</button>
+          </div>
+        ` : `
+          <div class="profile-cards">
+            ${state.profiles.map(p => profileCardHTML(p)).join('')}
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  function profileCardHTML(p) {
+    const avatarInner = p.avatarUrl
+      ? `<img src="${p.avatarUrl}" alt="">`
+      : escapeHtml((p.name || '?').trim().charAt(0).toUpperCase() || '?');
+    return `
+      <div class="profile-card ${p.isDefault ? 'is-default' : ''}">
+        <div class="profile-card-head">
+          <div class="profile-card-avatar">${avatarInner}</div>
+          <div class="profile-card-id">
+            <div class="profile-card-name">${escapeHtml(p.name || 'Unnamed')}${p.isDefault ? ' <span class="bank-tag" style="background:var(--accent); color:var(--accent-fg); border-color:var(--accent)">Default</span>' : ''}</div>
+            ${p.role ? `<div class="profile-card-role">${escapeHtml(p.role)}</div>` : ''}
+          </div>
+          <div class="profile-card-actions">
+            ${!p.isDefault ? `<button class="btn btn-sm" data-set-default="${p.id}" title="Set as default"><i data-lucide="star"></i></button>` : ''}
+            <button class="btn btn-sm" data-edit-profile="${p.id}"><i data-lucide="edit-3"></i> Edit</button>
+            <button class="btn btn-sm danger-outline" data-del-profile="${p.id}" title="Delete"><i data-lucide="trash-2"></i></button>
+          </div>
+        </div>
+        <div class="profile-card-body">
+          ${profileField('Email', p.email, 'mail')}
+          ${profileField('Phone', p.phone, 'phone')}
+          ${profileField('Address', p.address, 'map-pin', true)}
+          ${profileField('PAN', p.panNumber, 'credit-card')}
+          ${profileField('GST', p.gstNumber, 'file-text')}
+          ${profileField('Invoice Prefix', p.invoicePrefix, 'hash')}
+        </div>
+      </div>
+    `;
+  }
+
+  function profileField(label, value, icon, multiline) {
+    if (!value) return '';
+    const body = multiline ? nl2br(value) : escapeHtml(value);
+    return `
+      <div class="profile-field">
+        <div class="profile-field-label"><i data-lucide="${icon}"></i> ${label}</div>
+        <div class="profile-field-value">${body}</div>
+      </div>
+    `;
+  }
+
+  function wireProfile() {
+    document.getElementById('add-profile')?.addEventListener('click', () => openProfileModal());
+    document.getElementById('add-profile-empty')?.addEventListener('click', () => openProfileModal());
+    document.querySelectorAll('[data-edit-profile]').forEach(b => b.addEventListener('click', () => openProfileModal(b.dataset.editProfile)));
+    document.querySelectorAll('[data-set-default]').forEach(b => b.addEventListener('click', () => setDefaultProfile(b.dataset.setDefault)));
+    document.querySelectorAll('[data-del-profile]').forEach(b => b.addEventListener('click', () => confirmDeleteProfile(b.dataset.delProfile)));
+  }
+
+  async function setDefaultProfile(id) {
+    try {
+      // Clear previous default, set new one
+      const updates = state.profiles.map(p => {
+        const next = { ...p, isDefault: p.id === id };
+        delete next.id;
+        return db.doc('profiles/' + p.id).set(next);
+      });
+      await Promise.all(updates);
+      toast('Default profile set');
+    } catch(e) { toast('Could not update: ' + (e?.code || e?.message || '')); }
+  }
+
+  function confirmDeleteProfile(id) {
+    const p = state.profiles.find(x => x.id === id);
+    if (!p) return;
+    openModal(`
+      <h3>Delete profile?</h3>
+      <p style="color:var(--fg-muted); margin:0 0 4px">${escapeHtml(p.name || 'Unnamed')}</p>
+      <p style="color:var(--fg-muted); margin:0">New invoices will use ${state.profiles.length > 1 ? 'the next available profile' : 'a blank sender'} until you add another.</p>
+      <div class="modal-actions">
+        <button class="btn" data-close>Cancel</button>
+        <button class="btn solid-danger" id="confirm-del-profile">Delete</button>
+      </div>
+    `);
+    document.getElementById('confirm-del-profile').onclick = async () => {
+      try { await db.doc('profiles/' + id).delete(); closeModal(); toast('Profile deleted'); }
+      catch(e) { toast('Could not delete'); }
+    };
+  }
+
+  function openProfileModal(id) {
+    const existing = id ? state.profiles.find(p => p.id === id) : null;
+    const p = existing || { ...DEFAULT_PROFILE, id: uid(), isDefault: state.profiles.length === 0, createdAt: Date.now() };
+    const avatarInner = p.avatarUrl
+      ? `<img src="${p.avatarUrl}" alt="">`
+      : escapeHtml((p.name || '?').trim().charAt(0).toUpperCase() || '?');
+
+    openModal(`
+      <h3>${existing ? 'Edit Profile' : 'Add Profile'}</h3>
+      <div class="card-stack">
+        <div class="field">
+          <label>Profile Photo</label>
+          <div class="avatar-upload">
+            <div class="avatar-preview" id="pm-avatar-preview">${avatarInner}</div>
+            <div class="avatar-actions">
+              <input type="file" accept="image/*" id="pm-avatar-file">
+              <button class="btn btn-sm" id="pm-avatar-pick"><i data-lucide="upload"></i> Upload</button>
+              ${p.avatarUrl ? '<button class="btn btn-sm danger-outline" id="pm-avatar-clear">Remove</button>' : ''}
+            </div>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="field"><label>Full Name <span class="req">*</span></label><input id="pm-name" value="${escapeAttr(p.name)}" placeholder="Your Name"></div>
+          <div class="field"><label>Title / Role</label><input id="pm-role" value="${escapeAttr(p.role)}" placeholder="Content Creator"></div>
+        </div>
+        <div class="field-grid">
+          <div class="field"><label>Email</label><input id="pm-email" value="${escapeAttr(p.email)}" placeholder="you@example.com"></div>
+          <div class="field"><label>Phone</label><input id="pm-phone" value="${escapeAttr(p.phone)}" placeholder="+91-9000000000"></div>
+        </div>
+        <div class="field">
+          <label>Address</label>
+          <textarea id="pm-address" rows="3" placeholder="Street, city, state, country, PIN">${escapeHtml(p.address)}</textarea>
+        </div>
+        <div class="field-grid">
+          <div class="field"><label>PAN Number</label><input id="pm-pan" value="${escapeAttr(p.panNumber)}" placeholder="ABCDE1234F"></div>
+          <div class="field"><label>GST Number</label><input id="pm-gst" value="${escapeAttr(p.gstNumber)}" placeholder="29AAAAA0000A1Z0"></div>
+        </div>
+        <div class="field-grid">
+          <div class="field"><label>Invoice Prefix</label><input id="pm-prefix" value="${escapeAttr(p.invoicePrefix || 'INV')}" placeholder="INV"></div>
+          <div class="field"><label>Footer Note</label><input id="pm-footer" value="${escapeAttr(p.footerNote || DEFAULT_PROFILE.footerNote)}" placeholder="Use {email} to insert your email"></div>
+        </div>
+        <label class="field" style="flex-direction: row; gap:8px; align-items:center; cursor:pointer;">
+          <input type="checkbox" id="pm-default" ${p.isDefault ? 'checked' : ''} style="width:auto; margin:0;"> Set as default profile for new invoices
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close>Cancel</button>
+        <button class="btn primary" id="pm-save"><i data-lucide="check"></i> ${existing ? 'Save Changes' : 'Add Profile'}</button>
+      </div>
+    `);
+
+    let pendingAvatar = null; // null = keep existing; '' = clear; string = new data URI
+    const fileInput = document.getElementById('pm-avatar-file');
+    document.getElementById('pm-avatar-pick')?.addEventListener('click', () => fileInput.click());
+    fileInput?.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      try {
+        const dataUrl = await resizeImageToDataUrl(file, 240, 0.86);
+        pendingAvatar = dataUrl;
+        document.getElementById('pm-avatar-preview').innerHTML = `<img src="${dataUrl}" alt="">`;
+      } catch(e) { toast('Could not read image'); }
+    });
+    document.getElementById('pm-avatar-clear')?.addEventListener('click', () => {
+      pendingAvatar = '';
+      document.getElementById('pm-avatar-preview').innerHTML = escapeHtml((val('pm-name') || '?').trim().charAt(0).toUpperCase() || '?');
+    });
+
+    document.getElementById('pm-save').addEventListener('click', async () => {
+      const name = val('pm-name').trim();
+      if (!name) { toast('Name is required'); return; }
+      const isDefault = document.getElementById('pm-default').checked;
+      const prof = {
+        name, role: val('pm-role'), email: val('pm-email'),
+        phone: val('pm-phone'), address: val('pm-address'),
+        panNumber: val('pm-pan'), gstNumber: val('pm-gst'),
+        invoicePrefix: val('pm-prefix') || 'INV',
+        footerNote: val('pm-footer') || DEFAULT_PROFILE.footerNote,
+        isDefault,
+        createdAt: existing?.createdAt || Date.now(),
+      };
+      if (pendingAvatar === null) {
+        if (p.avatarUrl) prof.avatarUrl = p.avatarUrl;
+      } else if (pendingAvatar) {
+        prof.avatarUrl = pendingAvatar;
+      }
+
+      try {
+        const writes = [];
+        if (isDefault) {
+          // Clear isDefault on other profiles
+          state.profiles.forEach(other => {
+            if (other.id !== p.id && other.isDefault) {
+              const { id: _oid, ...clean } = other;
+              writes.push(db.doc('profiles/' + other.id).set({ ...clean, isDefault: false }));
+            }
+          });
+        }
+        writes.push(db.doc('profiles/' + p.id).set(prof));
+        await Promise.all(writes);
+        toast(existing ? 'Profile saved' : 'Profile added');
+        closeModal();
+      } catch(e) {
+        toast('Could not save: ' + (e?.code || e?.message || 'unknown'));
+      }
+    });
+  }
+
+  function val(id) { return document.getElementById(id)?.value || ''; }
+
+  function resizeImageToDataUrl(file, maxDim, quality) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function banksPanel() {
+    return `
+      <div class="card">
+        <div class="card-header-row"><h2>Bank Accounts</h2><button class="btn btn-sm" id="add-bank"><i data-lucide="plus"></i> Add Bank</button></div>
+        ${state.banks.length === 0 ? `
+          <div class="empty-state" style="padding:40px 20px"><p>No banks yet. Add your domestic and international accounts.</p></div>
+        ` : `
+          <div class="bank-list">
+            ${state.banks.map(b => `
+              <div class="bank-item">
+                <div class="bank-item-info">
+                  <div class="bank-item-name">${brandLogoHTML(b.name, 'chip-logo')}${escapeHtml(b.name)} <span class="bank-tag">${b.type==='international'?'International':'Domestic'}</span></div>
+                  <div class="bank-item-sub">${escapeHtml(b.accountNumber || '—')} ${b.ifsc ? '· ' + escapeHtml(b.ifsc) : ''} ${b.swiftCode ? '· SWIFT ' + escapeHtml(b.swiftCode) : ''}</div>
+                </div>
+                <div class="bank-item-actions">
+                  <button class="btn btn-sm" data-edit-bank="${b.id}"><i data-lucide="edit-3"></i> Edit</button>
+                  <button class="btn btn-sm danger-outline" data-del-bank="${b.id}"><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+    `;
+  }
+  function wireBanks() {
+    document.getElementById('add-bank').addEventListener('click', () => openBankModal());
+    document.querySelectorAll('[data-edit-bank]').forEach(b => b.addEventListener('click', () => openBankModal(b.dataset.editBank)));
+    document.querySelectorAll('[data-del-bank]').forEach(b => b.addEventListener('click', async () => {
+      try { await db.doc('banks/' + b.dataset.delBank).delete(); toast('Bank removed'); }
+      catch(e) { toast('Could not remove'); }
+    }));
+  }
+  function openBankModal(id) {
+    const existing = id ? state.banks.find(b => b.id === id) : null;
+    const b = existing || { id: uid(), name: '', type: 'domestic', accountName: '', accountNumber: '', ifsc: '', swiftCode: '', bankAddress: '' };
+    openModal(`
+      <h3>${existing ? 'Edit' : 'Add'} Bank</h3>
+      <div class="card-stack">
+        <div class="field">
+          <label>Type</label>
+          <div class="segmented" id="bank-type">
+            <button type="button" data-t="domestic" class="${b.type==='domestic'?'active':''}">Domestic</button>
+            <button type="button" data-t="international" class="${b.type==='international'?'active':''}">International</button>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="field"><label>Bank Name</label><input id="b-name" value="${escapeAttr(b.name)}" placeholder="ICICI Bank"></div>
+          <div class="field"><label>Account Name</label><input id="b-acname" value="${escapeAttr(b.accountName)}" placeholder="Your Name"></div>
+        </div>
+        <div class="field"><label>Account Number</label><input id="b-acnum" value="${escapeAttr(b.accountNumber)}"></div>
+        <div class="field-grid">
+          <div class="field"><label>IFSC Code</label><input id="b-ifsc" value="${escapeAttr(b.ifsc)}" placeholder="ICIC0004017"></div>
+          <div class="field"><label>SWIFT Code</label><input id="b-swift" value="${escapeAttr(b.swiftCode)}" placeholder="For international transfers"></div>
+        </div>
+        <div class="field"><label>Bank Address (optional)</label><textarea id="b-addr" rows="2">${escapeHtml(b.bankAddress)}</textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close>Cancel</button>
+        <button class="btn primary" id="b-save">${existing ? 'Save' : 'Add Bank'}</button>
+      </div>
+    `);
+    let curType = b.type;
+    document.querySelectorAll('#bank-type button').forEach(btn => btn.addEventListener('click', () => {
+      curType = btn.dataset.t;
+      document.querySelectorAll('#bank-type button').forEach(x => x.classList.toggle('active', x === btn));
+    }));
+    document.getElementById('b-save').addEventListener('click', async () => {
+      const bank = { name: val('b-name'), type: curType, accountName: val('b-acname'), accountNumber: val('b-acnum'), ifsc: val('b-ifsc'), swiftCode: val('b-swift'), bankAddress: val('b-addr') };
+      if (!bank.name.trim()) { toast('Bank name required'); return; }
+      try { await db.doc('banks/' + b.id).set(bank); toast('Bank saved'); closeModal(); }
+      catch(e) { toast('Could not save'); }
+    });
+  }
+
+  function methodsPanel() {
+    return `
+      <div class="card">
+        <div class="card-header-row"><h2>Payment Methods</h2><button class="btn btn-sm" id="add-method"><i data-lucide="plus"></i> Add Method</button></div>
+        ${state.methods.length === 0 ? `
+          <div class="empty-state" style="padding:40px 20px"><p>Add PayPal, UPI, Paytm, GPay or any method you accept.</p></div>
+        ` : `
+          <div class="method-list">
+            ${state.methods.map(m => `
+              <div class="bank-item">
+                <div class="bank-item-info">
+                  <div class="bank-item-name">${brandLogoHTML(m.label, 'chip-logo')}${escapeHtml(m.label)}</div>
+                  <div class="bank-item-sub">${escapeHtml(m.value)}</div>
+                </div>
+                <div class="bank-item-actions">
+                  <button class="btn btn-sm" data-edit-method="${m.id}"><i data-lucide="edit-3"></i> Edit</button>
+                  <button class="btn btn-sm danger-outline" data-del-method="${m.id}"><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+    `;
+  }
+  function wireMethods() {
+    document.getElementById('add-method').addEventListener('click', () => openMethodModal());
+    document.querySelectorAll('[data-edit-method]').forEach(b => b.addEventListener('click', () => openMethodModal(b.dataset.editMethod)));
+    document.querySelectorAll('[data-del-method]').forEach(b => b.addEventListener('click', async () => {
+      try { await db.doc('methods/' + b.dataset.delMethod).delete(); toast('Removed'); }
+      catch(e) { toast('Could not remove'); }
+    }));
+  }
+  function openMethodModal(id) {
+    const existing = id ? state.methods.find(m => m.id === id) : null;
+    const m = existing || { id: uid(), label: '', value: '' };
+    openModal(`
+      <h3>${existing ? 'Edit' : 'Add'} Payment Method</h3>
+      <div class="card-stack">
+        <div class="field"><label>Label</label><input id="m-label" value="${escapeAttr(m.label)}" placeholder="PayPal, UPI, GPay, Paytm, Wise…"></div>
+        <div class="field"><label>Value</label><input id="m-value" value="${escapeAttr(m.value)}" placeholder="email, phone, UPI id or handle"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close>Cancel</button>
+        <button class="btn primary" id="m-save">${existing ? 'Save' : 'Add'}</button>
+      </div>
+    `);
+    document.getElementById('m-save').addEventListener('click', async () => {
+      const mm = { label: val('m-label'), value: val('m-value') };
+      if (!mm.label.trim()) { toast('Label required'); return; }
+      try { await db.doc('methods/' + m.id).set(mm); toast('Saved'); closeModal(); }
+      catch(e) { toast('Could not save'); }
+    });
+  }
+
+  function openBulkImportModal() {
+    if (!sample) { toast('AI not available for this account'); return; }
+    openModal(`
+      <h3>Import past invoices</h3>
+      <p style="color:var(--fg-muted); font-size:13px; margin:0 0 16px">Upload one or more photos or screenshots of invoices. AI reads each one and adds it to your ledger.</p>
+      <div class="card-stack">
+        <div class="field">
+          <label>Invoice images</label>
+          <input type="file" id="bulk-files" accept="image/*,application/pdf" multiple>
+          <div class="ai-hint" style="margin-top:6px">Up to 20 files at a time. JPEG, PNG or PDF. PDFs are rendered page-by-page before reading. Large photos are auto-resized.</div>
+        </div>
+        <div class="field">
+          <label>Default status for these invoices</label>
+          <div class="segmented" id="bulk-status">
+            <button type="button" data-s="paid" class="active">Paid</button>
+            <button type="button" data-s="sent">Sent</button>
+            <button type="button" data-s="draft">Draft</button>
+          </div>
+        </div>
+        <div id="bulk-progress" hidden style="font-size:13px; color:var(--fg-muted); padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface-muted)"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close id="bulk-cancel">Cancel</button>
+        <button class="btn primary" id="bulk-go"><i data-lucide="sparkles"></i> Import</button>
+      </div>
+    `);
+    let status = 'paid';
+    document.querySelectorAll('#bulk-status button').forEach(b => b.addEventListener('click', () => {
+      status = b.dataset.s;
+      document.querySelectorAll('#bulk-status button').forEach(x => x.classList.toggle('active', x === b));
+    }));
+    document.getElementById('bulk-go').addEventListener('click', async () => {
+      const files = Array.from(document.getElementById('bulk-files').files || []);
+      if (!files.length) { toast('Pick at least one image'); return; }
+      if (files.length > 20) { toast('Max 20 at once — try fewer'); return; }
+      await runBulkImport(files, status);
+    });
+  }
+
+  async function runBulkImport(files, defaultStatus) {
+    const btn = document.getElementById('bulk-go');
+    const prog = document.getElementById('bulk-progress');
+    btn.disabled = true;
+    document.getElementById('bulk-cancel').disabled = true;
+    prog.hidden = false;
+    let done = 0, failed = 0;
+    const today = todayISO();
+    for (const f of files) {
+      prog.innerHTML = `<span class="spinner" style="margin-right:8px"></span> Processing ${done + failed + 1} of ${files.length} — <b>${escapeHtml(f.name)}</b>`;
+      renderIcons();
+      try {
+        const blobs = await fileToImageBlobs(f);
+        const prompt = `You are an invoice data extractor. Today is ${today}. Extract invoice data from the attached invoice image(s).
+
+Respond with ONLY a JSON object. Do not write any text before or after. Start your reply with { and end with }. Match this schema:
+{
+  "customer": { "name": "string", "address": "string", "gstNumber": "string", "panNumber": "string", "email": "string" },
+  "items": [ { "description": "string", "qty": number, "rate": number } ],
+  "currency": "INR|USD|EUR|GBP|AUD|CAD|SGD|AED",
+  "gstPercent": number,
+  "discount": number,
+  "dueDays": number,
+  "notes": "string",
+  "number": "string (invoice number if visible)",
+  "issueDate": "string YYYY-MM-DD if visible",
+  "dueDate": "string YYYY-MM-DD if visible"
+}
+
+Read the dates, invoice number, line items, totals and all customer information exactly as printed on the image(s). If any field is not visible, leave it empty. Respond with a JSON object only.`;
+        const imgs = blobs.slice(0, 5);
+        const data = await sample.json(prompt, { modelTier: 'complex', images: imgs });
+        const inv = {
+          id: uid(),
+          number: data.number || nextInvoiceNumber(),
+          status: defaultStatus,
+          currency: data.currency || 'INR',
+          issueDate: data.issueDate || today,
+          dueDate: data.dueDate || (typeof data.dueDays === 'number' ? addDaysISO(data.issueDate || today, data.dueDays) : addDaysISO(data.issueDate || today, 14)),
+          customer: {
+            name: data.customer?.name || 'Imported invoice',
+            address: data.customer?.address || '',
+            gstNumber: data.customer?.gstNumber || '',
+            panNumber: data.customer?.panNumber || '',
+            email: data.customer?.email || '',
+          },
+          items: (Array.isArray(data.items) && data.items.length ? data.items : [{description: 'Imported', qty: 1, rate: 0}])
+            .map(it => ({ id: uid(), description: it.description || '', qty: Number(it.qty) || 1, rate: Number(it.rate) || 0 })),
+          gstPercent: Number(data.gstPercent) || 0,
+          discount: Number(data.discount) || 0,
+          notes: data.notes || '',
+          bankId: (state.banks.find(b => b.type === 'domestic') || state.banks[0])?.id || '',
+          methodIds: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          imported: true,
+        };
+        await db.doc('invoices/' + inv.id).set(inv);
+        done++;
+      } catch(e) {
+        console.error('Import failed for', f.name, e);
+        failed++;
+      }
+    }
+    prog.innerHTML = `Done. Imported ${done}${failed ? ` · ${failed} failed` : ''}.`;
+    btn.disabled = false;
+    document.getElementById('bulk-cancel').disabled = false;
+    toast(`Imported ${done} invoice${done === 1 ? '' : 's'}${failed ? ` (${failed} failed)` : ''}`);
+    setTimeout(closeModal, 900);
+  }
+
+  function openModal(html) {
+    const m = document.getElementById('modal');
+    m.innerHTML = `<div class="modal">${html}</div>`;
+    m.classList.add('open');
+    m.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', closeModal));
+    m.addEventListener('click', e => { if (e.target === m) closeModal(); }, { once: true });
+    renderIcons();
+  }
+  function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    // Routing the hash is enough; readRoute always refreshes #create with today's data.
+    location.hash = t.dataset.tab;
+  }));
+
+  // Re-render Lucide icons once the lib arrives (script loads async after inline script)
+  if (document.readyState !== 'loading') {
+    setTimeout(() => { renderIcons(); updateThemeIcon(); }, 0);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => { renderIcons(); updateThemeIcon(); });
+  }
+  window.addEventListener('load', () => { renderIcons(); updateThemeIcon(); });
+
+  wirePaste();
+  init();
+})();
+</script>
+
+</body>
+</html>
