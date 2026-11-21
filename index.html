@@ -1078,6 +1078,15 @@
     return { subtotal, discount, gst, total };
   }
 
+  // Approximate exchange rates TO INR. Update these occasionally — they are
+  // only used for the Dashboard summary cards; every invoice itself always
+  // keeps its original currency.
+  const FX_TO_INR = { INR: 1, USD: 84, EUR: 92, GBP: 107, AUD: 56, CAD: 62, SGD: 63, AED: 23 };
+  function invoiceInINR(inv) {
+    const rate = FX_TO_INR[inv.currency] || 1;
+    return computeTotals(inv).total * rate;
+  }
+
   function renderIcons() {
     try { if (window.lucide) window.lucide.createIcons(); } catch(e) {}
   }
@@ -1295,9 +1304,11 @@
       return i.status === filter;
     });
 
-    const totalPaid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + computeTotals(i).total, 0);
-    const totalUnpaid = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + computeTotals(i).total, 0);
-    const totalOverdue = invoices.filter(i => i.status !== 'paid' && i.status !== 'draft' && i.dueDate && i.dueDate < today).reduce((s, i) => s + computeTotals(i).total, 0);
+    const totalPaid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + invoiceInINR(i), 0);
+    const totalUnpaid = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + invoiceInINR(i), 0);
+    const totalOverdue = invoices.filter(i => i.status !== 'paid' && i.status !== 'draft' && i.dueDate && i.dueDate < today).reduce((s, i) => s + invoiceInINR(i), 0);
+    const hasMixedCurrency = invoices.some(i => (i.currency || 'INR') !== 'INR');
+    const approx = hasMixedCurrency ? '≈ ' : '';
 
     root.innerHTML = `
       <div class="page-header">
@@ -1312,9 +1323,9 @@
       </div>
 
       <div class="stat-grid">
-        <div class="stat"><div class="stat-label">Paid</div><div class="stat-value">${fmtMoney(totalPaid)}</div><div class="stat-sub">${byStatus.paid || 0} invoices</div></div>
-        <div class="stat"><div class="stat-label">Outstanding</div><div class="stat-value">${fmtMoney(totalUnpaid)}</div><div class="stat-sub">${byStatus.sent || 0} invoices</div></div>
-        <div class="stat"><div class="stat-label">Overdue</div><div class="stat-value" style="color:${totalOverdue>0?'var(--danger)':'inherit'}">${fmtMoney(totalOverdue)}</div><div class="stat-sub">${byStatus.overdue || 0} invoices</div></div>
+        <div class="stat"><div class="stat-label">Paid</div><div class="stat-value">${approx}${fmtMoney(totalPaid)}</div><div class="stat-sub">${byStatus.paid || 0} invoices</div></div>
+        <div class="stat"><div class="stat-label">Outstanding</div><div class="stat-value">${approx}${fmtMoney(totalUnpaid)}</div><div class="stat-sub">${byStatus.sent || 0} invoices</div></div>
+        <div class="stat"><div class="stat-label">Overdue</div><div class="stat-value" style="color:${totalOverdue>0?'var(--danger)':'inherit'}">${approx}${fmtMoney(totalOverdue)}</div><div class="stat-sub">${byStatus.overdue || 0} invoices</div></div>
         <div class="stat"><div class="stat-label">Drafts</div><div class="stat-value">${byStatus.draft || 0}</div><div class="stat-sub">In progress</div></div>
       </div>
 
