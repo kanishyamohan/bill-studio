@@ -2755,6 +2755,7 @@ Rules: Parse amounts like "50k", "40,000", "₹40000" correctly. If qty not spec
     document.getElementById('bulk-cancel').disabled = true;
     prog.hidden = false;
     let done = 0, failed = 0;
+    const errors = [];
     const today = todayISO();
     for (const f of files) {
       prog.innerHTML = `<span class="spinner" style="margin-right:8px"></span> Processing ${done + failed + 1} of ${files.length} — <b>${escapeHtml(f.name)}</b>`;
@@ -2809,14 +2810,25 @@ Read the dates, invoice number, line items, totals and all customer information 
         done++;
       } catch(e) {
         console.error('Import failed for', f.name, e);
+        errors.push({ name: f.name, msg: (e && (e.message || e.code)) || (typeof e === 'string' ? e : 'Unknown') });
         failed++;
       }
     }
-    prog.innerHTML = `Done. Imported ${done}${failed ? ` · ${failed} failed` : ''}.`;
+    if (errors.length) {
+      prog.innerHTML = `
+        <div style="margin-bottom:8px; font-weight:600; color:var(--fg)">Done. Imported ${done}, ${failed} failed:</div>
+        <ul style="margin:0; padding-left:18px; color:var(--danger); font-size:12px; line-height:1.5">
+          ${errors.map(er => `<li><b style="color:var(--fg)">${escapeHtml(er.name)}</b> — ${escapeHtml(String(er.msg).slice(0, 180))}</li>`).join('')}
+        </ul>
+        <div style="margin-top:10px; font-size:12px; color:var(--fg-muted)">Common fixes: add an Anthropic API key in Settings → Data &amp; AI, add credits to your Anthropic account, or try a clearer image.</div>
+      `;
+    } else {
+      prog.innerHTML = `Done. Imported ${done}.`;
+    }
     btn.disabled = false;
     document.getElementById('bulk-cancel').disabled = false;
     toast(`Imported ${done} invoice${done === 1 ? '' : 's'}${failed ? ` (${failed} failed)` : ''}`);
-    setTimeout(closeModal, 900);
+    if (!errors.length) setTimeout(closeModal, 900);
   }
 
   function openModal(html) {
